@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 import gymnasium as gym
+from ForwardKinematics import thrustdirections
 
 class MavEnv(gym.Env):
     def __init__(self):
@@ -13,7 +14,7 @@ class MavEnv(gym.Env):
         )
         
         # Actions: [EDF1, EDF2, EDF3, servo1, servo2, servo3, servo4, servo5, servo6]
-        self.action_space = spaces.Box(
+        self.action_space = gym.spaces.Box(
             low=np.array([0, 0, 0, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2]),
             high=np.array([1, 1, 1, np.pi/2, np.pi/2, np.pi/2, np.pi/2, np.pi/2, np.pi/2]),
             dtype=np.float32
@@ -26,7 +27,8 @@ class MavEnv(gym.Env):
         self.max_thrust = 10.0  # N
         self.dt = 0.01  # s
         self.g = 9.81  # m/s^2
-        
+        self.k_f = 0.00006 # Thrust constant, Thrust_force = k_f * omega²
+
         # EDF positions (120 degrees apart)
         self.edf_positions = np.array([
             [self.arm_length * np.cos(0), self.arm_length * np.sin(0), 0],
@@ -47,26 +49,16 @@ class MavEnv(gym.Env):
         return self.state, {}
     
     def compute_thrust_vectors(self, action):
-        """Compute thrust vectors for each EDF based on servo angles."""
-        thrusts = action[:3] * self.max_thrust
-        servo_angles = action[3:]  # 2 angles per EDF
+        # """Compute thrust vectors for each EDF based on servo angles."""
+        # thrusts = action[:3] * self.max_thrust
+        # servo_angles = action[3:]  # 2 angles per EDF
+
         
-        thrust_vectors = []
-        for i in range(3):
-            # Convert servo angles to direction vector using spherical coordinates
-            theta = servo_angles[2*i]      # Azimuthal angle
-            phi = servo_angles[2*i + 1]    # Polar angle
-            
-            # Convert spherical to cartesian coordinates
-            direction = np.array([
-                np.sin(phi) * np.cos(theta),
-                np.sin(phi) * np.sin(theta),
-                np.cos(phi)
-            ])
-            
-            thrust_vectors.append(direction * thrusts[i])
-        
-        return np.array(thrust_vectors)
+        action_omega = np.array([900, 800, 700])
+        action_omega_squared = np.square(action_omega)[:, np.newaxis]
+        action_phi = np.zeros(6)
+        thrust_vectors = self.k_f * action_omega_squared * thrustdirections(action_phi)
+        return thrust_vectors
     
     def compute_forces_and_torques(self, thrust_vectors):
         """Compute net force and torque from thrust vectors."""
@@ -128,7 +120,7 @@ class MavEnv(gym.Env):
         # Check if done
         done = position_error < 0.1 and orientation_error < 0.1 and velocity_penalty < 0.1
         
-        return self.state, reward, done, False, {}
+        return self.state, reward, done, False, {}, thrust_vectors
     
     # def render(self):
 
@@ -136,15 +128,17 @@ def test_MAV():
     env = MavEnv()
     state = env.reset()
     
-    for _ in range(1000):
+    for _ in range(10):
         # Test with simple hover action
         action = np.array([0.5, 0.5, 0.5,  # EDF powers
                           0, 0,             # EDF1 angles
                           0, 0,             # EDF2 angles
                           0, 0])            # EDF3 angles
         
-        state, reward, done, _, _ = env.step(action)
+        state, reward, done, _, _, thrust_vectors = env.step(action)
+        print(thrust_vectors)
         # env.render()
 
 if __name__ == "__main__":
+    print(f"test_MAV")
     test_MAV()

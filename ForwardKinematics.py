@@ -26,6 +26,14 @@ def thrustdirection_nozzle3_bodyframe(phi1, phi2):
   ])
   return thrust_vector
 
+def thrustdirections(phi_vector):
+  phi11, phi12, phi21, phi22, phi31, phi32 = phi_vector
+  return np.array([
+    thrustdirection_nozzle1_bodyframe(phi11, phi12),
+    thrustdirection_nozzle2_bodyframe(phi21, phi22),
+    thrustdirection_nozzle3_bodyframe(phi31, phi32)
+  ])
+
 # Homogeneous Transformation matrices from MAV's body frame to base nozzle frame
 # Contains 3x3 rotation matrix R and 3x1 translation vector t
 T_body_to_nozzle1_base = np.array([
@@ -49,6 +57,22 @@ T_body_to_nozzle3_base = np.array([
   [ 0.0,     0.0,    0.0,     0.0]
 ])
 
-print(thrustdirection_nozzle1_bodyframe(0, 0))
-print(thrustdirection_nozzle2_bodyframe(0, 0))
-print(thrustdirection_nozzle3_bodyframe(0, 0))
+
+def main():
+  # Example usage:
+  # Set the six nozzle angles
+  states_phi = np.zeros(6)
+  print(f"\nThrust normal vectors for nozzle angles: {states_phi}: \n{thrustdirections(states_phi)}")
+
+  # Set three fan speeds omega
+  action_omega = np.array([900, 800, 700])
+  omega_squared = np.square(action_omega)[:, np.newaxis]
+  action_phi = 0 * np.ones(6)
+  k_f = 0.00006
+  # Calculate thrust vectors
+  thrust_vectors = k_f * omega_squared * thrustdirections(action_phi)
+  print(f"\n Thrust vector for fan speeds: {action_omega}, nozzle angles: {action_phi} and k_f = {k_f} :\n{thrust_vectors}")
+      
+if __name__ == "__main__":
+  main()
+  
