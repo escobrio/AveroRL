@@ -2,10 +2,13 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 import gymnasium as gym
 from ForwardKinematics import thrustdirections, r_BE
+import matplotlib.pyplot as plt
 
 class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
+
+        # Every Gym Environment must have observation_space
         # State: [x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]
         self.observation_space = gym.spaces.Box(
             low=np.array([-np.inf] * 12),
@@ -13,41 +16,56 @@ class MavEnv(gym.Env):
             dtype=np.float32
         )
         
-        # Actions: [EDF1, EDF2, EDF3, servo1, servo2, servo3, servo4, servo5, servo6]
+        # Every Gym Environment must have action_space
+        # Actions: [EDF1_des, EDF2_des, EDF3_des, servo1_des, servo2_des, servo3_des, servo4_des, servo5_des, servo6_des]
         self.action_space = gym.spaces.Box(
-            low=np.array([0, 0, 0, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2]),
-            high=np.array([1, 1, 1, np.pi/2, np.pi/2, np.pi/2, np.pi/2, np.pi/2, np.pi/2]),
+            low=np.array([1050, 1050, 1050, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]),
+            high=np.array([1950, 1950, 1950, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi]),
             dtype=np.float32
         )
+
+        # 21 states
+        self.state = np.array([0, 0, 1,  # [:3] position
+                              0, 0, 0,  # [3:6] orientation
+                              0, 0, 0,  # [6:9] linear velocity
+                              0, 0, 0,  # [9:12]angular velocity
+                              1050, 1050, 1050, # [12:15] fan speeds
+                              0, 0, 0, 0, 0, 0]) # [15:21] nozzle angles
         
         # Physical parameters
-        self.mass = 1.0  # kg
-        self.inertia = np.array([0.1, 0.1, 0.1])  # kg*m^2
-        self.arm_length = 0.2  # m
-        self.max_thrust = 10.0  # N
+        self.mass = 5.218  # kg
+        self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # kg*m^2
         self.dt = 0.01  # s
-        self.g = 9.81  # m/s^2
+        self.g = np.array([0, 0, 9.81])  # m/s^2
         self.k_f = 0.00006 # Thrust constant, Thrust_force = k_f * omega²
-
-        # EDF positions (120 degrees apart)
-        self.edf_positions = np.array([
-            [self.arm_length * np.cos(0), self.arm_length * np.sin(0), 0],
-            [self.arm_length * np.cos(2*np.pi/3), self.arm_length * np.sin(2*np.pi/3), 0],
-            [self.arm_length * np.cos(4*np.pi/3), self.arm_length * np.sin(4*np.pi/3), 0]
-        ])
-        
-        # Initialize visualization
-        self.viewer = None
+        self.k_phi = 6 # Hz, First order nozzle angle model, 1/tau where tau is time constant
+        self.k_omega = 12 # Hz, First order fan speed model TODO this is actually k_forceomega
         
     def reset(self, seed=None):
         super().reset(seed=seed)
-        # Initialize state: slight offset from zero to make it interesting
-        self.state = np.array([0, 0, 1,  # position
-                              0.1, 0.1, 0,  # orientation
-                              0, 0, 0,  # linear velocity
-                              0, 0, 0])  # angular velocity
-        return self.state, {}
+        # Initialize state: 
+        # TODO: randomize
+        self.state = np.array([0, 0.1, 1,  # position
+                              0, 0.1, 0.2,  # orientation
+                              0, 0.1, 0.2,  # linear velocity
+                              0, 0.1, 0.2,  # angular velocity
+                              1050, 1150, 1250, # fan speeds
+                              -2, -1, 0, 1, 2, 3]) # nozzle angles
+        return self.state
     
+    def first_order_actuator_models(self, action):
+        phi_des = action[3:]
+        phi_state = self.state[15:]
+        phi_dot = self.k_phi * (phi_des - phi_state)
+        phi_state += phi_dot * self.dt
+
+        omega_des = action[:3]
+        omega_state = self.state[12:15]
+        omega_dot = self.k_omega * (omega_des - omega_state)
+        omega_state += omega_dot * self.dt
+
+        return phi_state, omega_state
+
     def compute_thrust_vectors(self, action):
         # """Compute thrust vectors for each EDF based on servo angles."""
         # thrusts = action[:3] * self.max_thrust
@@ -64,7 +82,6 @@ class MavEnv(gym.Env):
         """Compute net force and torque from thrust vectors."""
         # Net force is sum of all thrust vectors
         force = np.sum(thrust_vectors, axis=0)
-        force[2] -= self.mass * self.g  # Add gravity
         
         # Compute torques from each thrust
         torque = np.zeros(3)
@@ -77,6 +94,9 @@ class MavEnv(gym.Env):
         return force, torque
     
     def step(self, action):
+        # Update actuators
+        phi_state, omega_state = self.first_order_actuator_models(action)
+
         # Get thrust vectors from EDF and servo settings
         thrust_vectors = self.compute_thrust_vectors(action)
         
@@ -93,12 +113,12 @@ class MavEnv(gym.Env):
         R = Rotation.from_euler('xyz', orientation).as_matrix()
         
         # Update linear velocity and position
-        linear_acc = force / self.mass
+        linear_acc = force / self.mass - self.g # TODO NE eqt. np.cross(angular_vel, linear_vel)
         linear_vel += linear_acc * self.dt
         position += linear_vel * self.dt
         
         # Update angular velocity and orientation
-        angular_acc = torque / self.inertia
+        angular_acc = torque / self.inertia # TODO np.cross(angular_vel, self.inertia @ angular_velocity)
         angular_vel += angular_acc * self.dt
         orientation += angular_vel * self.dt
         
@@ -107,7 +127,9 @@ class MavEnv(gym.Env):
             position,
             orientation,
             linear_vel,
-            angular_vel
+            angular_vel,
+            omega_state,
+            phi_state
         ])
         
         # Compute reward
@@ -125,23 +147,67 @@ class MavEnv(gym.Env):
         
         return self.state, reward, done, False, {}, force, torque
     
-    # def render(self):
+    def plot_states(self, states, actions):
+
+        print(f"states: {len(states[0])}")
+        states = np.array(states)
+        actions = np.array(actions)
+        print(states.shape)
+
+        fig, axs = plt.subplots(3, 2, figsize=(12, 10))
+
+        for i in range(0, 3, 1):
+            axs[0,0].plot(states[:,i], label=f"position {i}")
+            axs[0,0].legend()
+
+        for i in range(3, 6, 1):
+            axs[0,1].plot(states[:,i], label=f"orientation {i}")
+            axs[0,1].legend()
+
+        for i in range(6, 9, 1):
+            axs[1,0].plot(states[:,i], label=f"linear velocity {i}")
+            axs[1,0].legend()
+
+        for i in range(9, 12, 1):
+            axs[1,1].plot(states[:,i], label=f"angular velocity {i}")
+            axs[1,1].legend()
+
+        for i in range(12, 15, 1):
+            axs[2,0].plot(states[:,i], label=f"fan speeds {i}")
+            axs[2,0].plot(actions[:,i-12], label=f"fan speeds {i}", linestyle='--')
+            axs[2,0].legend()
+
+        for i in range(15, 21, 1):
+            axs[2,1].plot(states[:,i], label=f"nozzle angle {i}")
+            axs[2,1].plot(actions[:,i-12], label=f"nozzle angle desired {i}", linestyle='--')
+            axs[2,1].legend()
+        
+        plt.show()
+
 
 def test_MAV():
     env = MavEnv()
     state = env.reset()
     
-    for _ in range(10):
+    # Record states and actions
+    states = [state]
+    actions = []
+    
+    for _ in range(100):
         # Test with simple hover action
-        action = np.array([0.5, 0.5, 0.5,  # EDF powers
+        action = np.array([1500, 1500, 1500,  # EDF powers
                           0, 0,             # EDF1 angles
                           0, 0,             # EDF2 angles
                           0, 0])            # EDF3 angles
         
         state, reward, done, _, _, force, torque = env.step(action)
-        print(f"force: {force}, torque: {torque}")
-        # env.render()
+        states.append(state)
+        actions.append(action)
+
+    env.plot_states(states, actions)    
+
 
 if __name__ == "__main__":
     print(f"test_MAV")
     test_MAV()
+    
