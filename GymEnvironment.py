@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 import gymnasium as gym
-from ForwardKinematics import thrustdirections
+from ForwardKinematics import thrustdirections, r_BE
 
 class MavEnv(gym.Env):
     def __init__(self):
@@ -68,8 +68,11 @@ class MavEnv(gym.Env):
         
         # Compute torques from each thrust
         torque = np.zeros(3)
-        for pos, thrust in zip(self.edf_positions, thrust_vectors):
-            torque += np.cross(pos, thrust)
+        action_phi = np.zeros(6)
+        r_BE_1, r_BE_2, r_BE_3 = r_BE(action_phi)
+        torque += np.cross(r_BE_1, thrust_vectors[0])
+        torque += np.cross(r_BE_2, thrust_vectors[1])
+        torque += np.cross(r_BE_3, thrust_vectors[2])
         
         return force, torque
     
@@ -120,7 +123,7 @@ class MavEnv(gym.Env):
         # Check if done
         done = position_error < 0.1 and orientation_error < 0.1 and velocity_penalty < 0.1
         
-        return self.state, reward, done, False, {}, thrust_vectors
+        return self.state, reward, done, False, {}, force, torque
     
     # def render(self):
 
@@ -135,8 +138,8 @@ def test_MAV():
                           0, 0,             # EDF2 angles
                           0, 0])            # EDF3 angles
         
-        state, reward, done, _, _, thrust_vectors = env.step(action)
-        print(thrust_vectors)
+        state, reward, done, _, _, force, torque = env.step(action)
+        print(f"force: {force}, torque: {torque}")
         # env.render()
 
 if __name__ == "__main__":

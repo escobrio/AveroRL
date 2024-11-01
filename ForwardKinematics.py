@@ -1,7 +1,7 @@
 ### From mav_avero/nodes/avero_ctrl/src/allocation_python_new/helper_functions_symb_new_sim.py
 import numpy as np
 
-# Normal vectorr of the thrustvector exiting out of the nozzle 1 depending on the swivel nozzle angles phi11, phi12
+# Normal vector of the thrustvector exiting out of the nozzle 1 depending on the swivel nozzle angles phi11, phi12
 def thrustdirection_nozzle1_bodyframe(phi1, phi2):
   thrust_vector = np.array([
     -0.5 * np.sin(phi1) * np.cos(phi2) - 0.5 * np.sin(phi1) - 0.7071 * np.sin(phi2) * np.cos(phi1),
@@ -34,6 +34,47 @@ def thrustdirections(phi_vector):
     thrustdirection_nozzle3_bodyframe(phi31, phi32)
   ])
 
+# Distance from Base Frame to Endeffector of Nozzle 1 depending on the swivel nozzle angles phi11 and phi12
+def r_BE_1(phi1, phi2):
+    return np.array([
+        0.0203 * np.sin(phi1) * np.cos(phi2) + 0.0779 * np.sin(phi1) + 0.0288 * np.sin(phi2) * np.cos(phi1) + 0.1507,
+        -0.0098 * np.sin(phi1) * np.sin(phi2) + 0.0070 * np.cos(phi1) * np.cos(phi2) + 0.0266 * np.cos(phi1) + 0.0191 * np.cos(phi2) - 0.2290,
+        0.0270 * np.sin(phi1) * np.sin(phi2) - 0.0191 * np.cos(phi1) * np.cos(phi2) - 0.0732 * np.cos(phi1) + 0.0070 * np.cos(phi2) - 0.0405
+    ])
+
+def r_BE_2(phi1, phi2):
+    return np.array([
+        0.0085 * np.sin(phi1) * np.sin(phi2) - 0.0102 * np.sin(phi1) * np.cos(phi2) - 0.0389 * np.sin(phi1) 
+        - 0.0144 * np.sin(phi2) * np.cos(phi1) - 0.0060 * np.cos(phi1) * np.cos(phi2) - 0.0231 * np.cos(phi1) 
+        - 0.0166 * np.cos(phi2) + 0.1271,
+        
+        0.0049 * np.sin(phi1) * np.sin(phi2) + 0.0176 * np.sin(phi1) * np.cos(phi2) + 0.0674 * np.sin(phi1) 
+        + 0.0249 * np.sin(phi2) * np.cos(phi1) - 0.0035 * np.cos(phi1) * np.cos(phi2) - 0.0133 * np.cos(phi1) 
+        - 0.0096 * np.cos(phi2) + 0.2446,
+        
+        0.0270 * np.sin(phi1) * np.sin(phi2) - 0.0191 * np.cos(phi1) * np.cos(phi2) - 0.0732 * np.cos(phi1) 
+        + 0.0070 * np.cos(phi2) - 0.0405
+    ])
+
+def r_BE_3(phi1, phi2):
+    return np.array([
+        -0.0085 * np.sin(phi1) * np.sin(phi2) - 0.0102 * np.sin(phi1) * np.cos(phi2) - 0.0389 * np.sin(phi1) 
+        - 0.0144 * np.sin(phi2) * np.cos(phi1) + 0.0060 * np.cos(phi1) * np.cos(phi2) + 0.0231 * np.cos(phi1) 
+        + 0.0166 * np.cos(phi2) - 0.2682,
+        
+        0.0049 * np.sin(phi1) * np.sin(phi2) - 0.0176 * np.sin(phi1) * np.cos(phi2) - 0.0674 * np.sin(phi1) 
+        - 0.0249 * np.sin(phi2) * np.cos(phi1) - 0.0035 * np.cos(phi1) * np.cos(phi2) - 0.0133 * np.cos(phi1) 
+        - 0.0096 * np.cos(phi2) - 0.0117,
+        
+        0.0270 * np.sin(phi1) * np.sin(phi2) - 0.0191 * np.cos(phi1) * np.cos(phi2) - 0.0732 * np.cos(phi1) 
+        + 0.0070 * np.cos(phi2) - 0.0405
+    ])
+
+def r_BE(phi_vector):
+  phi11, phi12, phi21, phi22, phi31, phi32 = phi_vector
+  return r_BE_1(phi11, phi12), r_BE_2(phi21, phi22), r_BE_3(phi31, phi32)
+
+
 # Homogeneous Transformation matrices from MAV's body frame to base nozzle frame
 # Contains 3x3 rotation matrix R and 3x1 translation vector t
 T_body_to_nozzle1_base = np.array([
@@ -61,17 +102,19 @@ T_body_to_nozzle3_base = np.array([
 def main():
   # Example usage:
   # Set the six nozzle angles
-  states_phi = np.zeros(6)
+  states_phi = np.array([np.pi, 0, np.pi, 0, np.pi, 0])
   print(f"\nThrust normal vectors for nozzle angles: {states_phi}: \n{thrustdirections(states_phi)}")
 
   # Set three fan speeds omega
-  action_omega = np.array([900, 800, 700])
-  omega_squared = np.square(action_omega)[:, np.newaxis]
-  action_phi = 0 * np.ones(6)
+  states_omega = np.array([900, 800, 700])
+  omega_squared = np.square(states_omega)[:, np.newaxis]
   k_f = 0.00006
   # Calculate thrust vectors
-  thrust_vectors = k_f * omega_squared * thrustdirections(action_phi)
-  print(f"\n Thrust vector for fan speeds: {action_omega}, nozzle angles: {action_phi} and k_f = {k_f} :\n{thrust_vectors}")
+  thrust_vectors = k_f * omega_squared * thrustdirections(states_phi)
+  print(f"\n Thrust vector for fan speeds: {states_omega}, nozzle angles: {states_phi} and k_f = {k_f} :\n{thrust_vectors}")
+
+  r_BE_1, r_BE_2, r_BE_3 = r_BE(states_phi)
+  print(f"\nr_BE_1, r_BE_2, r_BE_3 = \n{r_BE(states_phi)} ")
       
 if __name__ == "__main__":
   main()
