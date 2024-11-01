@@ -24,12 +24,12 @@ class MavEnv(gym.Env):
             dtype=np.float32
         )
 
-        # 21 states
+        # Initialize 21 states
         self.state = np.array([0, 0, 1,  # [:3] position
                               0, 0, 0,  # [3:6] orientation
                               0, 0, 0,  # [6:9] linear velocity
                               0, 0, 0,  # [9:12]angular velocity
-                              1050, 1050, 1050, # [12:15] fan speeds
+                              1050, 1050, 1050, # [12:15] fan speeds PWM
                               0, 0, 0, 0, 0, 0]) # [15:21] nozzle angles
         
         # Physical parameters
@@ -66,16 +66,11 @@ class MavEnv(gym.Env):
 
         return phi_state, omega_state
 
-    def compute_thrust_vectors(self, action):
-        # """Compute thrust vectors for each EDF based on servo angles."""
-        # thrusts = action[:3] * self.max_thrust
-        # servo_angles = action[3:]  # 2 angles per EDF
-
-        
-        action_omega = np.array([900, 800, 700])
-        action_omega_squared = np.square(action_omega)[:, np.newaxis]
-        action_phi = np.zeros(6)
-        thrust_vectors = self.k_f * action_omega_squared * thrustdirections(action_phi)
+    def compute_thrust_vectors(self, phi_state, omega_state):
+        # thrust = k_f * (PWM - 1050)² * normal_vector
+        omega_squared = np.square(omega_state - 1050)[:, np.newaxis]
+        thrust_vectors = self.k_f * omega_squared * thrustdirections(phi_state)
+        # print(f"\nk_f: {self.k_f} \nomega_squared: \n{omega_squared}, \nthrustdirections(phi_state): \n{thrustdirections(phi_state)} \n thrust_vectors: \n{thrust_vectors}")
         return thrust_vectors
     
     def compute_forces_and_torques(self, thrust_vectors):
@@ -98,7 +93,7 @@ class MavEnv(gym.Env):
         phi_state, omega_state = self.first_order_actuator_models(action)
 
         # Get thrust vectors from EDF and servo settings
-        thrust_vectors = self.compute_thrust_vectors(action)
+        thrust_vectors = self.compute_thrust_vectors(phi_state, omega_state)
         
         # Compute net force and torque
         force, torque = self.compute_forces_and_torques(thrust_vectors)
@@ -149,10 +144,8 @@ class MavEnv(gym.Env):
     
     def plot_states(self, states, actions):
 
-        print(f"states: {len(states[0])}")
         states = np.array(states)
         actions = np.array(actions)
-        print(states.shape)
 
         fig, axs = plt.subplots(3, 2, figsize=(12, 10))
 
@@ -195,7 +188,7 @@ def test_MAV():
     
     for _ in range(100):
         # Test with simple hover action
-        action = np.array([1500, 1500, 1500,  # EDF powers
+        action = np.array([1650, 1650, 1650,  # EDF PWM signals, ~1600 for hover 
                           0, 0,             # EDF1 angles
                           0, 0,             # EDF2 angles
                           0, 0])            # EDF3 angles
