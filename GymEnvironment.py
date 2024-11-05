@@ -30,14 +30,16 @@ class MavEnv(gym.Env):
                               0, 0, 0,  # [6:9] linear velocity
                               0, 0, 0,  # [9:12]angular velocity
                               1050, 1050, 1050, # [12:15] fan speeds PWM
-                              0, 0, 0, 0, 0, 0]) # [15:21] nozzle angles
+                              0, 0, 0, 0, 0, 0, # [15:21] nozzle angles
+                              0, 0, 0,  # [21:24] linear acc
+                              0, 0, 0]) # [24:27] angular acc
         
         # Physical parameters
         self.mass = 5.218  # kg
         self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # kg*m^2
-        self.dt = 0.01  # s
+        self.dt = 0.016667  # s
         self.g = np.array([0, 0, 9.81])  # m/s^2
-        self.k_f = 0.00006 # Thrust constant, Thrust_force = k_f * omega²
+        self.k_f = 0.00005749 # Thrust constant, Thrust_force = k_f * omega²
         self.k_phi = 6 # Hz, First order nozzle angle model, 1/tau where tau is time constant
         self.k_omega = 12 # Hz, First order fan speed model TODO this is actually k_forceomega
         
@@ -50,12 +52,14 @@ class MavEnv(gym.Env):
                               0, 0.1, 0.2,  # linear velocity
                               0, 0.1, 0.2,  # angular velocity
                               0, 0, 0, # fan speeds
-                              0, 0, 0, 0, 0, 0]) # nozzle angles
+                              0, 0, 0, 0, 0, 0, # nozzle angles
+                              0, 0, 0, # linear acceleration
+                              0, 0, 0]) # angular acceleration
         return self.state
     
     def first_order_actuator_models(self, action):
         phi_des = action[3:]
-        phi_state = self.state[15:]
+        phi_state = self.state[15:21]
         phi_dot = self.k_phi * (phi_des - phi_state)
         phi_state += phi_dot * self.dt
 
@@ -125,7 +129,9 @@ class MavEnv(gym.Env):
             linear_vel,
             angular_vel,
             omega_state,
-            phi_state
+            phi_state,
+            linear_acc,
+            angular_acc
         ])
         
         # Compute reward
@@ -148,14 +154,27 @@ class MavEnv(gym.Env):
         states = np.array(states)
         actions = np.array(actions)
 
-        fig, axs = plt.subplots(3, 2, figsize=(20, 12))
+        position_actual = np.load("sample_commands_positions.npy", allow_pickle=True)
+        orientation_actual = np.load("sample_commands_orientations.npy", allow_pickle=True)
 
-        for i in range(0, 3, 1):
-            axs[0,0].plot(states[:,i], label=f"position {i}")
-            axs[0,0].legend()
+        fig, axs = plt.subplots(4, 2, figsize=(20, 12))
+
+        duration = 80
+        time_states = np.linspace(0, duration, len(states))
+        time_pose = np.linspace(0, duration, len(position_actual))
+
+        axs[0,0].plot(time_states, states[:,0], label="pos_x_sim", c='C0')
+        axs[0,0].plot(time_states, states[:,1], label="pos_y_sim", c='C1')
+        axs[0,0].plot(time_states, states[:,2], label="pos_z_sim", c='C2')
+        axs[0,0].plot(time_pose, position_actual[:, 0], label='pos_x_real', c='C0', linestyle='--')
+        axs[0,0].plot(time_pose, position_actual[:, 1], label='pos_y_real', c='C1', linestyle='--')
+        axs[0,0].plot(time_pose, position_actual[:, 2], label='pos_z_real', c='C2', linestyle='--')
+        axs[0,0].legend()
+        axs[0,0].set_xlabel("Time [s]")
+        axs[0,0].set_ylabel("Position [m]")
 
         for i in range(3, 6, 1):
-            axs[0,1].plot(states[:,i], label=f"orientation {i}")
+            axs[0,1].plot(states[:,3], label=f"orientation {i}")
             axs[0,1].legend()
 
         for i in range(6, 9, 1):
@@ -166,16 +185,25 @@ class MavEnv(gym.Env):
             axs[1,1].plot(states[:,i], label=f"angular velocity {i}")
             axs[1,1].legend()
 
-        for i in range(12, 15, 1):
-            axs[2,0].plot(states[:,i], label=f"fan speeds {i}")
-            axs[2,0].plot(actions[:,i-12], label=f"fan speeds {i}", linestyle='--')
+        for i in range(21, 24, 1):
+            axs[2,0].plot(states[:,i], label=f"linear acceleration {i}")
             axs[2,0].legend()
 
-        for i in range(15, 21, 1):
-            axs[2,1].plot(states[:,i], label=f"nozzle angle {i}")
-            axs[2,1].plot(actions[:,i-12], label=f"nozzle angle desired {i}", linestyle='--')
+        for i in range(24, 27, 1):
+            axs[2,1].plot(states[:,i], label=f"angular acceleration {i}")
             axs[2,1].legend()
+
+        for i in range(12, 15, 1):
+            axs[3,0].plot(states[:,i], label=f"fan speeds {i}")
+            axs[3,0].plot(actions[:,i-12], label=f"fan speeds {i}", linestyle='--')
+            axs[3,0].legend()
+
+        for i in range(15, 21, 1):
+            axs[3,1].plot(states[:,i], label=f"nozzle angle {i}")
+            axs[3,1].plot(actions[:,i-12], label=f"nozzle angle desired {i}", linestyle='--')
+            axs[3,1].legend()
         
+        plt.tight_layout()
         plt.show()
 
 
@@ -186,6 +214,7 @@ def test_MAV(commands_edf, commands_nozzle):
     # Record states and actions
     states = [state]
     actions = []
+    forces = []
     
     for i in range(len(commands_edf)):
         # Test with actual actuator commands
@@ -194,8 +223,11 @@ def test_MAV(commands_edf, commands_nozzle):
         state, reward, done, _, _, force, torque = env.step(action)
         states.append(state)
         actions.append(action)
+        forces.append(force)
 
-    env.plot_states(states, actions)    
+    # plt.plot(forces)
+    # plt.show()
+    env.plot_states(states, actions)
 
 
 if __name__ == "__main__":
