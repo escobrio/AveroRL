@@ -49,8 +49,8 @@ class MavEnv(gym.Env):
                               0, 0.1, 0.2,  # orientation
                               0, 0.1, 0.2,  # linear velocity
                               0, 0.1, 0.2,  # angular velocity
-                              1050, 1150, 1250, # fan speeds
-                              -2, -1, 0, 1, 2, 3]) # nozzle angles
+                              0, 0, 0, # fan speeds
+                              0, 0, 0, 0, 0, 0]) # nozzle angles
         return self.state
     
     def first_order_actuator_models(self, action):
@@ -68,7 +68,8 @@ class MavEnv(gym.Env):
 
     def compute_thrust_vectors(self, phi_state, omega_state):
         # thrust = k_f * (PWM - 1050)² * normal_vector
-        omega_squared = np.square(omega_state - 1050)[:, np.newaxis]
+        # In this case, using the commanded PWM signal, so -1050 is already subtracted:
+        omega_squared = np.square(omega_state)[:, np.newaxis]
         thrust_vectors = self.k_f * omega_squared * thrustdirections(phi_state)
         # print(f"\nk_f: {self.k_f} \nomega_squared: \n{omega_squared}, \nthrustdirections(phi_state): \n{thrustdirections(phi_state)} \n thrust_vectors: \n{thrust_vectors}")
         return thrust_vectors
@@ -147,7 +148,7 @@ class MavEnv(gym.Env):
         states = np.array(states)
         actions = np.array(actions)
 
-        fig, axs = plt.subplots(3, 2, figsize=(12, 10))
+        fig, axs = plt.subplots(3, 2, figsize=(20, 12))
 
         for i in range(0, 3, 1):
             axs[0,0].plot(states[:,i], label=f"position {i}")
@@ -178,7 +179,7 @@ class MavEnv(gym.Env):
         plt.show()
 
 
-def test_MAV():
+def test_MAV(commands_edf, commands_nozzle):
     env = MavEnv()
     state = env.reset()
     
@@ -186,12 +187,9 @@ def test_MAV():
     states = [state]
     actions = []
     
-    for _ in range(100):
-        # Test with simple hover action
-        action = np.array([1650, 1650, 1650,  # EDF PWM signals, ~1600 for hover 
-                          0, 0,             # EDF1 angles
-                          0, 0,             # EDF2 angles
-                          0, 0])            # EDF3 angles
+    for i in range(len(commands_edf)):
+        # Test with actual actuator commands
+        action = np.concatenate((commands_edf[i], commands_nozzle[i]))
         
         state, reward, done, _, _, force, torque = env.step(action)
         states.append(state)
@@ -201,6 +199,11 @@ def test_MAV():
 
 
 if __name__ == "__main__":
+
+    # Load sample commands to test out simulation
+    commands_edf = np.load("sample_commands_edf.npy", allow_pickle=True)
+    commands_nozzle = np.load("sample_commands_nozzle.npy", allow_pickle=True)
+    
     print(f"test_MAV")
-    test_MAV()
+    test_MAV(commands_edf, commands_nozzle)
     

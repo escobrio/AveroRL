@@ -33,6 +33,9 @@ if __name__ == "__main__":
     
     motor_msgs, edf_msgs = extract_motor_messages(bagfile_path)
 
+    np.save("sample_commands_edf.npy", edf_msgs, allow_pickle=True)
+    np.save("sample_commands_nozzle.npy", motor_msgs, allow_pickle=True)
+
     # Plots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20,12))
 
