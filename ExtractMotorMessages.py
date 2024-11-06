@@ -111,10 +111,11 @@ if __name__ == "__main__":
     motor_msgs, edf_msgs = extract_motor_messages(bagfile_path)
     positions, orientations = extract_pose(bagfile_path)
 
+    # UNCOMMENT TO UPDATE
     # np.save("sample_commands_edf.npy", edf_msgs, allow_pickle=True)
     # np.save("sample_commands_nozzle.npy", motor_msgs, allow_pickle=True)
-    np.save("sample_commands_positions.npy", positions, allow_pickle=True)
-    np.save("sample_commands_orientations.npy", orientations, allow_pickle=True)
+    # np.save("sample_commands_positions.npy", positions, allow_pickle=True)
+    # np.save("sample_commands_orientations.npy", orientations, allow_pickle=True)
 
     plot_actuator_cmds(motor_msgs, edf_msgs)
     plot_pose(positions, orientations)
