@@ -47,11 +47,11 @@ class MavEnv(gym.Env):
         super().reset(seed=seed)
         # Initialize state: 
         # TODO: randomize
-        self.state = np.array([0, 0.1, 1,  # position
-                              0, 0.1, 0.2,  # orientation
-                              0, 0.1, 0.2,  # linear velocity
-                              0, 0.1, 0.2,  # angular velocity
-                              0, 0, 0, # fan speeds
+        self.state = np.array([0, 0, 0,  # position
+                              0, 0, 0,  # orientation
+                              0, 0, 0,  # linear velocity
+                              0, 0, 0,  # angular velocity
+                              562, 562, 562, # fan speeds
                               0, 0, 0, 0, 0, 0, # nozzle angles
                               0, 0, 0, # linear acceleration
                               0, 0, 0]) # angular acceleration
@@ -85,7 +85,7 @@ class MavEnv(gym.Env):
         
         # Compute torques from each thrust
         torque = np.zeros(3)
-        action_phi = np.zeros(6)
+        action_phi = np.zeros(6) # TODO use actual phi commands
         r_BE_1, r_BE_2, r_BE_3 = r_BE(action_phi)
         torque += np.cross(r_BE_1, thrust_vectors[0])
         torque += np.cross(r_BE_2, thrust_vectors[1])
@@ -113,6 +113,7 @@ class MavEnv(gym.Env):
         R = Rotation.from_euler('xyz', orientation).as_matrix()
         
         # Update linear velocity and position
+        # TODO calculate gravity vector in body frame
         linear_acc = force / self.mass - self.g # TODO NE eqt. np.cross(angular_vel, linear_vel)
         linear_vel += linear_acc * self.dt
         position += linear_vel * self.dt
@@ -120,7 +121,7 @@ class MavEnv(gym.Env):
         # Update angular velocity and orientation
         angular_acc = torque / self.inertia # TODO np.cross(angular_vel, self.inertia @ angular_velocity)
         angular_vel += angular_acc * self.dt
-        orientation += angular_vel * self.dt
+        orientation += angular_vel * self.dt # TODO calculate quaternion orientation from angular_vel
         
         # Update state
         self.state = np.concatenate([
@@ -154,27 +155,20 @@ class MavEnv(gym.Env):
         states = np.array(states)
         actions = np.array(actions)
 
-        position_actual = np.load("sample_commands_positions.npy", allow_pickle=True)
-        orientation_actual = np.load("sample_commands_orientations.npy", allow_pickle=True)
-
         fig, axs = plt.subplots(4, 2, figsize=(20, 12))
 
         duration = 80
         time_states = np.linspace(0, duration, len(states))
-        time_pose = np.linspace(0, duration, len(position_actual))
 
         axs[0,0].plot(time_states, states[:,0], label="pos_x_sim", c='C0')
         axs[0,0].plot(time_states, states[:,1], label="pos_y_sim", c='C1')
         axs[0,0].plot(time_states, states[:,2], label="pos_z_sim", c='C2')
-        axs[0,0].plot(time_pose, position_actual[:, 0], label='pos_x_real', c='C0', linestyle='--')
-        axs[0,0].plot(time_pose, position_actual[:, 1], label='pos_y_real', c='C1', linestyle='--')
-        axs[0,0].plot(time_pose, position_actual[:, 2], label='pos_z_real', c='C2', linestyle='--')
         axs[0,0].legend()
         axs[0,0].set_xlabel("Time [s]")
         axs[0,0].set_ylabel("Position [m]")
 
         for i in range(3, 6, 1):
-            axs[0,1].plot(states[:,3], label=f"orientation {i}")
+            axs[0,1].plot(states[:,i], label=f"orientation {i}")
             axs[0,1].legend()
 
         for i in range(6, 9, 1):
@@ -225,16 +219,16 @@ def test_MAV(commands_edf, commands_nozzle):
         actions.append(action)
         forces.append(force)
 
-    # plt.plot(forces)
-    # plt.show()
+    plt.plot(forces)
+    plt.show()
     env.plot_states(states, actions)
 
 
 if __name__ == "__main__":
 
     # Load sample commands to test out simulation
-    commands_edf = np.load("sample_commands_edf.npy", allow_pickle=True)
-    commands_nozzle = np.load("sample_commands_nozzle.npy", allow_pickle=True)
+    commands_edf = 562 * np.ones((4509, 3))
+    commands_nozzle = np.zeros((4509, 6))
     
     print(f"test_MAV")
     test_MAV(commands_edf, commands_nozzle)
