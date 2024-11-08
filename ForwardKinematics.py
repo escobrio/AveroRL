@@ -102,7 +102,7 @@ T_body_to_nozzle3_base = np.array([
 def main():
   # Example usage:
   # Set the six nozzle angles
-  states_phi = np.array([np.pi, 0, np.pi, 0, np.pi, 0])
+  states_phi = np.array([0.80, -1.25, 0.81, -1.25, 0.79, -1.25]) # Nozzles pointing straight down.
   print(f"\nThrust normal vectors for nozzle angles: {states_phi}: \n{thrustdirections(states_phi)}")
 
   # Set three fan speeds omega

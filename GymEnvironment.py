@@ -51,8 +51,8 @@ class MavEnv(gym.Env):
                               0, 0, 0,  # orientation
                               0, 0, 0,  # linear velocity
                               0, 0, 0,  # angular velocity
-                              562, 562, 562, # fan speeds
-                              0, 0, 0, 0, 0, 0, # nozzle angles
+                              545, 545, 545, # fan speeds
+                              0.8, -1.25, 0.8, -1.25, 0.8, -1.25, # nozzle angles
                               0, 0, 0, # linear acceleration
                               0, 0, 0]) # angular acceleration
         return self.state
@@ -227,9 +227,10 @@ def test_MAV(commands_edf, commands_nozzle):
 if __name__ == "__main__":
 
     # Load sample commands to test out simulation
-    commands_edf = 562 * np.ones((4509, 3))
-    commands_nozzle = np.zeros((4509, 6))
-    
+    commands_edf = 545 * np.ones((4509, 3))
+    commands_nozzle = np.array([0.8, -1.25, 0.8, -1.25, 0.8, -1.25])
+    commands_nozzle = np.tile(commands_nozzle, (4509, 1))
+
     print(f"test_MAV")
     test_MAV(commands_edf, commands_nozzle)
     
