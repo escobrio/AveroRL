@@ -3,16 +3,19 @@ from scipy.spatial.transform import Rotation
 import gymnasium as gym
 from ForwardKinematics import thrustdirections, r_BE
 import matplotlib.pyplot as plt
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.callbacks import EvalCallback
 
 class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
         # Every Gym Environment must have observation_space
-        # State: [x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]
+        # State: [dx, dy, dz, droll, dpitch, dyaw, TODO gravity vector in body frame]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 12),
-            high=np.array([np.inf] * 12),
+            low=np.array([-np.inf] * 6),
+            high=np.array([np.inf] * 6),
             dtype=np.float32
         )
         
@@ -42,6 +45,7 @@ class MavEnv(gym.Env):
         self.k_f = 0.00005749 # Thrust constant, Thrust_force = k_f * omega²
         self.k_phi = 6 # Hz, First order nozzle angle model, 1/tau where tau is time constant
         self.k_omega = 12 # Hz, First order fan speed model TODO this is actually k_forceomega
+        self.step_counter = 0
         
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -55,7 +59,9 @@ class MavEnv(gym.Env):
                               0.8, -1.25, 0.8, -1.25, 0.8, -1.25, # nozzle angles
                               0, 0, 0, # linear acceleration
                               0, 0, 0]) # angular acceleration
-        return self.state
+        obs = self.state[6:12]
+        self.step_counter = 0
+        return obs, {}
     
     def first_order_actuator_models(self, action):
         phi_des = action[3:]
@@ -94,6 +100,7 @@ class MavEnv(gym.Env):
         return force, torque
     
     def step(self, action):
+        done = False
         # Update actuators
         phi_state, omega_state = self.first_order_actuator_models(action)
 
@@ -134,71 +141,37 @@ class MavEnv(gym.Env):
             linear_acc,
             angular_acc
         ])
-        
+
+        obs = self.state[6:12]
+
         # Compute reward
-        target_position = np.array([0, 0, 1])  # Hover at 1m
-        target_orientation = np.zeros(3)        # Level orientation
-        
-        position_error = np.linalg.norm(position - target_position)
-        orientation_error = np.linalg.norm(orientation - target_orientation)
         velocity_penalty = np.linalg.norm(linear_vel) + np.linalg.norm(angular_vel)
         
-        reward = -(position_error + 0.5 * orientation_error + 0.1 * velocity_penalty)
+        reward = -velocity_penalty
         
         # Check if done
-        done = position_error < 0.1 and orientation_error < 0.1 and velocity_penalty < 0.1
-        
-        return self.state, reward, done, False, {}, force, torque
+        self.step_counter += 1
+        if (self.step_counter > 1000):
+            done = True
+        return obs, reward, done, done, {}
     
-    def plot_states(self, states, actions):
+def plot_states(states, actions):
 
-        states = np.array(states)
-        actions = np.array(actions)
+    states = np.array(states)
+    actions = np.array(actions)
 
-        fig, axs = plt.subplots(4, 2, figsize=(20, 12))
+    fig, axs = plt.subplots(4, 2, figsize=(20, 12))
 
-        duration = 80
-        time_states = np.linspace(0, duration, len(states))
-
-        axs[0,0].plot(time_states, states[:,0], label="pos_x_sim", c='C0')
-        axs[0,0].plot(time_states, states[:,1], label="pos_y_sim", c='C1')
-        axs[0,0].plot(time_states, states[:,2], label="pos_z_sim", c='C2')
+    for i in range(0, 3, 1):
+        axs[0,0].plot(states[:,i], label=f"lin vel {i}")
         axs[0,0].legend()
-        axs[0,0].set_xlabel("Time [s]")
-        axs[0,0].set_ylabel("Position [m]")
 
-        for i in range(3, 6, 1):
-            axs[0,1].plot(states[:,i], label=f"orientation {i}")
-            axs[0,1].legend()
-
-        for i in range(6, 9, 1):
-            axs[1,0].plot(states[:,i], label=f"linear velocity {i}")
-            axs[1,0].legend()
-
-        for i in range(9, 12, 1):
-            axs[1,1].plot(states[:,i], label=f"angular velocity {i}")
-            axs[1,1].legend()
-
-        for i in range(21, 24, 1):
-            axs[2,0].plot(states[:,i], label=f"linear acceleration {i}")
-            axs[2,0].legend()
-
-        for i in range(24, 27, 1):
-            axs[2,1].plot(states[:,i], label=f"angular acceleration {i}")
-            axs[2,1].legend()
-
-        for i in range(12, 15, 1):
-            axs[3,0].plot(states[:,i], label=f"fan speeds {i}")
-            axs[3,0].plot(actions[:,i-12], label=f"fan speeds {i}", linestyle='--')
-            axs[3,0].legend()
-
-        for i in range(15, 21, 1):
-            axs[3,1].plot(states[:,i], label=f"nozzle angle {i}")
-            axs[3,1].plot(actions[:,i-12], label=f"nozzle angle desired {i}", linestyle='--')
-            axs[3,1].legend()
-        
-        plt.tight_layout()
-        plt.show()
+    for i in range(3, 6, 1):
+        axs[0,1].plot(states[:,i], label=f"ang vel {i}")
+        axs[0,1].legend()
+    
+    plt.tight_layout()
+    plt.show()
 
 
 def test_MAV(commands_edf, commands_nozzle):
@@ -223,6 +196,52 @@ def test_MAV(commands_edf, commands_nozzle):
     plt.show()
     env.plot_states(states, actions)
 
+def train_MAV():
+    vec_env = make_vec_env(lambda: MavEnv(), n_envs=1)
+
+    model = PPO("MlpPolicy", vec_env, verbose=1)
+
+    eval_env = MavEnv()
+    eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
+
+    model.learn(total_timesteps=25, callback=eval_callback)
+
+    model.save("ppo_mav_model")
+
+    obs = vec_env.reset()
+    for _ in range(1000):
+        action, _states = model.predict(obs, deterministic=True)
+        obs, reward, done, truncated = vec_env.step(action)
+        if done:
+            obs = vec_env.reset()
+
+def evaluate_model():
+    env = MavEnv()
+    
+    model = PPO.load("ppo_mav_model")
+
+    obs = env.reset()
+    # Record states and actions
+    observations = [obs]
+    actions = []
+    forces = []
+    
+    for i in range(100):
+        obs = obs[0]
+
+        action, _states = model.predict(obs, deterministic=True)
+
+        obs = env.step(action)
+
+        observations.append(obs)
+        actions.append(action)
+
+    # observations = np.array(observations)
+    observations = np.array([tup[0] for tup in observations])
+    print(f"observations: {observations}\nactions: {actions[11]}")
+    
+    plot_states(observations, actions)
+    
 
 if __name__ == "__main__":
 
@@ -232,5 +251,6 @@ if __name__ == "__main__":
     commands_nozzle = np.tile(commands_nozzle, (4509, 1))
 
     print(f"test_MAV")
-    test_MAV(commands_edf, commands_nozzle)
+    # train_MAV()
+    evaluate_model()
     
