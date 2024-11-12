@@ -61,7 +61,8 @@ class MavEnv(gym.Env):
                               0, 0, 0]) # angular acceleration
         obs = self.state[6:12]
         self.step_counter = 0
-        return obs, {}
+        info = self.state
+        return obs, info
     
     def first_order_actuator_models(self, action):
         phi_des = action[3:]
@@ -153,102 +154,99 @@ class MavEnv(gym.Env):
         self.step_counter += 1
         if (self.step_counter > 1000):
             done = True
-        return obs, reward, done, done, {}
-    
-def plot_states(states, actions):
 
-    states = np.array(states)
+        info = self.state
+        
+        return obs, reward, done, done, info
+    
+def plot_info(observations, infos, actions):
+
+    observations = np.array(observations)
+    infos = np.array(infos)
     actions = np.array(actions)
 
     fig, axs = plt.subplots(4, 2, figsize=(20, 12))
 
     for i in range(0, 3, 1):
-        axs[0,0].plot(states[:,i], label=f"lin vel {i}")
+        axs[0,0].plot(infos[:,i], label=f"position {i}")
         axs[0,0].legend()
 
     for i in range(3, 6, 1):
-        axs[0,1].plot(states[:,i], label=f"ang vel {i}")
+        axs[0,1].plot(infos[:,i], label=f"orientation {i}")
         axs[0,1].legend()
+
+    for i in range(6, 9, 1):
+        axs[1,0].plot(infos[:,i], label=f"lin_vel {i}")
+        axs[1,0].legend()
+
+    for i in range(9, 12, 1):
+        axs[1,1].plot(infos[:,i], label=f"ang_vel {i}")
+        axs[1,1].legend()
+
+    for i in range(21, 24, 1):
+        axs[2,0].plot(infos[:,i], label=f"lin_acc {i}")
+        axs[2,0].legend()
+
+    for i in range(24, 27, 1):
+        axs[2,1].plot(infos[:,i], label=f"ang_acc {i}")
+        axs[2,1].legend()
+
+    for i in range(12, 15, 1):
+        axs[3,0].plot(infos[:,i], label=f"fan_speeds {i}")
+        axs[3,0].plot(actions[:,i-12], label=f"fan_speeds actions{i}")
+        axs[3,0].legend()
+
+    for i in range(15, 21, 1):
+        axs[3,1].plot(infos[:,i], label=f"nozzle_angles {i}")
+        axs[3,1].plot(actions[:,i-12], label=f"nozzle_angles actions{i}", linestyle='--')
+        axs[3,1].legend()
     
     plt.tight_layout()
     plt.show()
 
-
-def test_MAV(commands_edf, commands_nozzle):
-    env = MavEnv()
-    state = env.reset()
-    
-    # Record states and actions
-    states = [state]
-    actions = []
-    forces = []
-    
-    for i in range(len(commands_edf)):
-        # Test with actual actuator commands
-        action = np.concatenate((commands_edf[i], commands_nozzle[i]))
-        
-        state, reward, done, _, _, force, torque = env.step(action)
-        states.append(state)
-        actions.append(action)
-        forces.append(force)
-
-    plt.plot(forces)
-    plt.show()
-    env.plot_states(states, actions)
-
 def train_MAV():
-    vec_env = make_vec_env(lambda: MavEnv(), n_envs=1)
+    # vec_env = make_vec_env(lambda: MavEnv(), n_envs=1)
+    env = MavEnv()
 
-    model = PPO("MlpPolicy", vec_env, verbose=1)
+    model = PPO("MlpPolicy", env, verbose=1)
 
     eval_env = MavEnv()
-    eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
+    # eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
 
-    model.learn(total_timesteps=25, callback=eval_callback)
+    model.learn(total_timesteps=25_000)
 
     model.save("ppo_mav_model")
 
-    obs = vec_env.reset()
-    for _ in range(1000):
-        action, _states = model.predict(obs, deterministic=True)
-        obs, reward, done, truncated = vec_env.step(action)
-        if done:
-            obs = vec_env.reset()
 
 def evaluate_model():
     env = MavEnv()
     
     model = PPO.load("ppo_mav_model")
 
-    obs = env.reset()
+    obs, info = env.reset()
     # Record states and actions
     observations = [obs]
+    infos = [info]
     actions = []
-    forces = []
     
-    for i in range(100):
-        obs = obs[0]
+    for i in range(1000):
 
         action, _states = model.predict(obs, deterministic=True)
 
-        obs = env.step(action)
+        obs, reward, done, done, info = env.step(action)
 
         observations.append(obs)
+        infos.append(info)
         actions.append(action)
 
     # observations = np.array(observations)
-    observations = np.array([tup[0] for tup in observations])
-    print(f"observations: {observations}\nactions: {actions[11]}")
+    # observations = np.array([tup[0] for tup in observations])
+    # print(f"observations: {observations}\nactions: {actions[11]}")
     
-    plot_states(observations, actions)
+    plot_info(observations, infos, actions)
     
 
 if __name__ == "__main__":
-
-    # Load sample commands to test out simulation
-    commands_edf = 545 * np.ones((4509, 3))
-    commands_nozzle = np.array([0.8, -1.25, 0.8, -1.25, 0.8, -1.25])
-    commands_nozzle = np.tile(commands_nozzle, (4509, 1))
 
     print(f"test_MAV")
     # train_MAV()
