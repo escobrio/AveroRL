@@ -61,7 +61,7 @@ class MavEnv(gym.Env):
                               0, 0, 0]) # angular acceleration
         obs = self.state[6:12]
         self.step_counter = 0
-        info = self.state
+        info = {"state": self.state}
         return obs, info
     
     def first_order_actuator_models(self, action):
@@ -101,7 +101,8 @@ class MavEnv(gym.Env):
         return force, torque
     
     def step(self, action):
-        done = False
+        terminated = False
+        truncated = False
         # Update actuators
         phi_state, omega_state = self.first_order_actuator_models(action)
 
@@ -148,72 +149,78 @@ class MavEnv(gym.Env):
         # Compute reward
         velocity_penalty = np.linalg.norm(linear_vel) + np.linalg.norm(angular_vel)
         
-        reward = -velocity_penalty
+        reward = -0.001*velocity_penalty
         
-        # Check if done
+        # Check if truncated
         self.step_counter += 1
         if (self.step_counter > 1000):
-            done = True
+            truncated = True
 
-        info = self.state
+        info = {"state": self.state}
         
-        return obs, reward, done, done, info
+        return obs, reward, terminated, truncated, info
     
-def plot_info(observations, infos, actions):
+def plot_info(observations, infos, actions, rewards):
 
     observations = np.array(observations)
-    infos = np.array(infos)
     actions = np.array(actions)
+    states = np.array([info['state'] for info in infos])
+    rewards = np.array(rewards)
 
-    fig, axs = plt.subplots(4, 2, figsize=(20, 12))
+    fig, axs = plt.subplots(5, 2, figsize=(20, 12))
 
     for i in range(0, 3, 1):
-        axs[0,0].plot(infos[:,i], label=f"position {i}")
+        axs[0,0].plot(states[:,i], label=f"position {i}")
         axs[0,0].legend()
 
     for i in range(3, 6, 1):
-        axs[0,1].plot(infos[:,i], label=f"orientation {i}")
+        axs[0,1].plot(states[:,i], label=f"orientation {i}")
         axs[0,1].legend()
 
     for i in range(6, 9, 1):
-        axs[1,0].plot(infos[:,i], label=f"lin_vel {i}")
+        axs[1,0].plot(states[:,i], label=f"lin_vel {i}")
         axs[1,0].legend()
 
     for i in range(9, 12, 1):
-        axs[1,1].plot(infos[:,i], label=f"ang_vel {i}")
+        axs[1,1].plot(states[:,i], label=f"ang_vel {i}")
         axs[1,1].legend()
 
     for i in range(21, 24, 1):
-        axs[2,0].plot(infos[:,i], label=f"lin_acc {i}")
+        axs[2,0].plot(states[:,i], label=f"lin_acc {i}")
         axs[2,0].legend()
 
     for i in range(24, 27, 1):
-        axs[2,1].plot(infos[:,i], label=f"ang_acc {i}")
+        axs[2,1].plot(states[:,i], label=f"ang_acc {i}")
         axs[2,1].legend()
 
     for i in range(12, 15, 1):
-        axs[3,0].plot(infos[:,i], label=f"fan_speeds {i}")
+        axs[3,0].plot(states[:,i], label=f"fan_speeds {i}")
         axs[3,0].plot(actions[:,i-12], label=f"fan_speeds actions{i}")
         axs[3,0].legend()
 
     for i in range(15, 21, 1):
-        axs[3,1].plot(infos[:,i], label=f"nozzle_angles {i}")
+        axs[3,1].plot(states[:,i], label=f"nozzle_angles {i}")
         axs[3,1].plot(actions[:,i-12], label=f"nozzle_angles actions{i}", linestyle='--')
         axs[3,1].legend()
     
+    axs[4,0].plot(rewards, label="Reward", marker='.', linestyle='', markersize=3)
+    axs[4,0].legend()
+
     plt.tight_layout()
     plt.show()
 
 def train_MAV():
-    # vec_env = make_vec_env(lambda: MavEnv(), n_envs=1)
+
     env = MavEnv()
 
-    model = PPO("MlpPolicy", env, verbose=1)
+    model = PPO.load("ppo_mav_model", env=env)
 
-    eval_env = MavEnv()
+    # Uncomment for new model
+    # model = PPO("MlpPolicy", env, verbose=1)
+
     # eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
 
-    model.learn(total_timesteps=25_000)
+    model.learn(total_timesteps=1_000_000)
 
     model.save("ppo_mav_model")
 
@@ -228,6 +235,7 @@ def evaluate_model():
     observations = [obs]
     infos = [info]
     actions = []
+    rewards = []
     
     for i in range(1000):
 
@@ -238,17 +246,14 @@ def evaluate_model():
         observations.append(obs)
         infos.append(info)
         actions.append(action)
-
-    # observations = np.array(observations)
-    # observations = np.array([tup[0] for tup in observations])
-    # print(f"observations: {observations}\nactions: {actions[11]}")
+        rewards.append(reward)
     
-    plot_info(observations, infos, actions)
+    plot_info(observations, infos, actions, rewards)
     
 
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    # train_MAV()
+    train_MAV()
     evaluate_model()
     
