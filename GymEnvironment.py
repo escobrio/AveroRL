@@ -36,7 +36,7 @@ class MavEnv(gym.Env):
         # Physical parameters
         self.mass = 5.218  # kg
         self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # kg*m^2
-        self.dt = 0.01  # s
+        self.dt = 1  # s
         self.g = np.array([0, 0, -9.81])  # m/s^2
         self.k_f = 0.00005749 # Thrust constant, Thrust_force = k_f * omega²
         self.k_phi = 6 # Hz, First order nozzle angle model, 1/tau where tau is time constant
@@ -120,17 +120,20 @@ class MavEnv(gym.Env):
         # Extract current state
         position = self.state[0:3]
         orientation = R.from_quat(self.state[3:7])
-        print(f"q: {self.state[3:7]}, orientation: {orientation.as_euler('xyz')}")
+        print(f"q_k: {self.state[3:7]}, orientation_k: {orientation.as_euler('xyz')}")
         lin_vel = self.state[7:10]
         ang_vel = self.state[10:13]
         
-        print(f"torque: {torque}")
 
         # Update angular velocity and orientation
         ang_acc = torque / self.inertia # TODO np.cross(ang_vel, self.inertia @ angular_velocity)
-        ang_vel += ang_acc * self.dt
+
+        # Insert your ang_vel here! for example:
+        # roll with omega = np.pi/2 [rad/s] for dt = 1s
+        ang_vel = np.array([np.pi/2, 0, 0])
+        print(f"ang_vel: {ang_vel}")
         orientation *= R.from_rotvec(ang_vel * self.dt) # TODO calculate quaternion orientation from ang_vel
-        print(f"q: {orientation.as_quat()}, orientation: {orientation.as_euler('xyz')}")
+        print(f"q_k+1: {orientation.as_quat()}, orientation_k+1: {orientation.as_euler('xyz', degrees=True)}")
         
         # Update linear velocity and position
         # TODO calculate gravity vector in body frame
