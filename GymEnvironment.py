@@ -4,6 +4,8 @@ import gymnasium as gym
 from ForwardKinematics import thrustdirections, r_BE
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
+from Quaternion import quaternion_multiply, quaternion_rotate_vector
+import time
 
 class MavEnv(gym.Env):
     def __init__(self):
@@ -25,7 +27,7 @@ class MavEnv(gym.Env):
 
         # Initialize 21 states
         self.state = np.array([0, 0, 0,          # [:3] position [m]
-                              0, 0, 0, 1,        # [3:7] orientation quaternion [x, y, z, w]
+                              0, 0, 0, 1,        # [3:7] orientation quaternion [x, y, z, w] of body frame in world frame
                               0, 0, 0,           # [7:10] linear velocity [m/s]
                               0, 0, 0,           # [10:13] angular velocity [rad/s]
                               0, 0, 0,           # [13:16] linear acc [m/s²]
@@ -34,13 +36,13 @@ class MavEnv(gym.Env):
                               0, 0, 0, 0, 0, 0]) # [22:28] nozzle angles [rad]
         
         # Physical parameters
-        self.mass = 5.218  # kg
-        self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # kg*m^2
-        self.dt = 1  # s
-        self.g = np.array([0, 0, -9.81])  # m/s^2
-        self.k_f = 0.00005749 # Thrust constant, Thrust_force = k_f * omega²
-        self.k_phi = 6 # Hz, First order nozzle angle model, 1/tau where tau is time constant
-        self.k_omega = 12 # Hz, First order fan speed model TODO this is actually k_forceomega
+        self.mass = 5.218  # [kg]
+        self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # [kg*m^2], TODO: non-diagonal elements
+        self.dt = 1  # [s]
+        self.g = np.array([0, 0, -9.81])    # [m/s^2], Gravity vector in world frame
+        self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
+        self.k_phi = 6                      # [Hz], First order nozzle angle model, 1/tau where tau is time constant
+        self.k_omega = 12                   # [Hz], First order fan speed model TODO this is actually k_forceomega
         self.step_counter = 0
         
     def reset(self, seed=None):
@@ -48,7 +50,7 @@ class MavEnv(gym.Env):
         # Initialize state: 
         # TODO: randomize
         self.state = np.array([0, 0, 0,      # position
-                              0, 0, 0, 1,    # orientation
+                              0, 0, 0, 1,    # orientation quaternion [x, y, z, w]
                               0, 0, 0,       # linear velocity
                               0, 0, 0,       # angular velocity
                               0, 0, 0,       # linear acceleration
@@ -56,7 +58,12 @@ class MavEnv(gym.Env):
                               545, 545, 545, # fan speeds
                               0.8, -1.25, 0.8, -1.25, 0.8, -1.25]) # nozzle angles
         
-        obs = self.state[7:13] # lin_vel and ang_vel, TODO append gravity vector in body frame
+        q = self.state[3:7]
+        print(f"q: {q}")
+        g_bodyframe = quaternion_rotate_vector(self.state[3:7], self.g)
+        print(f"g: {g_bodyframe}")
+        # obs = np.concatenate([self.state[7:13], g_bodyframe]) # lin_vel and ang_vel, TODO append gravity vector in body frame
+        obs = self.state[7:13]
         self.step_counter = 0
         info = {"state": self.state}
         return obs, info
@@ -111,16 +118,16 @@ class MavEnv(gym.Env):
         # Update actuators
         nozzles_angles, fanspeeds = self.first_order_actuator_models(action)
 
-        # Compute thrust vectors from EDF and servo states
+        # Compute thrust vectors from EDF and servo states [bodyframe]
         thrust_vectors = self.compute_thrust_vectors(nozzles_angles, fanspeeds)
         
-        # Compute net force and torque
+        # Compute net force and torque [bodyframe]
         force, torque = self.compute_forces_and_torques(thrust_vectors)
         
         # Extract current state
         position = self.state[0:3]
         orientation = R.from_quat(self.state[3:7])
-        print(f"q_k: {self.state[3:7]}, orientation_k: {orientation.as_euler('xyz')}")
+        print(f"q_k: {self.state[3:7]}, orientation_k rpy: {orientation.as_euler('xyz')}")
         lin_vel = self.state[7:10]
         ang_vel = self.state[10:13]
         
@@ -129,16 +136,30 @@ class MavEnv(gym.Env):
         ang_acc = torque / self.inertia # TODO np.cross(ang_vel, self.inertia @ angular_velocity)
 
         # Insert your ang_vel here! for example:
-        # roll with omega = np.pi/2 [rad/s] for dt = 1s
-        ang_vel = np.array([np.pi/2, 0, 0])
+        ang_vel = np.array([np.pi/4, 0, 0])
         print(f"ang_vel: {ang_vel}")
         orientation *= R.from_rotvec(ang_vel * self.dt) # TODO calculate quaternion orientation from ang_vel
         print(f"q_k+1: {orientation.as_quat()}, orientation_k+1: {orientation.as_euler('xyz', degrees=True)}")
         
         # Update linear velocity and position
         # TODO calculate gravity vector in body frame
+
+        # orientation is body frame in world frame.
+        # To calculate a world vector in body frame, orientation.inv() is used!
+
+        print(f"orientation: {orientation.as_quat()}")
+        start = time.time()
+        g_bodyframe = quaternion_rotate_vector(orientation.inv().as_quat(), self.g)
+        end = time.time()
+        print(f"g_bodyframe: {g_bodyframe}, time: {end - start}")
+
+        start = time.time()
         g_body_frame = orientation.inv().apply(self.g)
-        print(f"g_body: {g_body_frame}")
+        end = time.time()
+        print(f"g_body: {g_body_frame}, time: {end - start}")
+
+        # I've got two ways to work with rotations. Which one to chose?
+
         lin_acc = force / self.mass - g_body_frame # TODO NE eqt. np.cross(ang_vel, lin_vel)
         lin_vel += lin_acc * self.dt
         position += orientation.apply(lin_vel) * self.dt
