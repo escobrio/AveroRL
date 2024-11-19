@@ -13,8 +13,8 @@ class MavEnv(gym.Env):
 
         # State: [dx, dy, dz, droll, dpitch, dyaw, TODO gravity vector in body frame]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 6),
-            high=np.array([np.inf] * 6),
+            low=np.array([-np.inf] * 9),
+            high=np.array([np.inf] * 9),
             dtype=np.float32
         )
         
@@ -38,7 +38,7 @@ class MavEnv(gym.Env):
         # Physical parameters
         self.mass = 5.218  # [kg]
         self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # [kg*m^2], TODO: non-diagonal elements
-        self.dt = 1  # [s]
+        self.dt = 0.01  # [s]
         self.g = np.array([0, 0, -9.81])    # [m/s^2], Gravity vector in world frame
         self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
         self.k_phi = 6                      # [Hz], First order nozzle angle model, 1/tau where tau is time constant
@@ -59,11 +59,9 @@ class MavEnv(gym.Env):
                               0.8, -1.25, 0.8, -1.25, 0.8, -1.25]) # nozzle angles
         
         q = self.state[3:7]
-        print(f"q: {q}")
         g_bodyframe = quaternion_rotate_vector(self.state[3:7], self.g)
-        print(f"g: {g_bodyframe}")
-        # obs = np.concatenate([self.state[7:13], g_bodyframe]) # lin_vel and ang_vel, TODO append gravity vector in body frame
-        obs = self.state[7:13]
+        # obs = self.state[7:13]
+        obs = np.concatenate([self.state[7:13], g_bodyframe]) # lin_vel and ang_vel, TODO append gravity vector in body frame
         self.step_counter = 0
         info = {"state": self.state}
         return obs, info
@@ -91,9 +89,8 @@ class MavEnv(gym.Env):
     def compute_thrust_vectors(self, nozzles_angles, fanspeeds):
         # thrust = k_f * (PWM - 1050)² * normal_vector
         # In this case, using the commanded PWM signal, so -1050 is already subtracted:
-        fanspeeds_squared = np.square(fanspeeds)[:, np.newaxis]
+        fanspeeds_squared = np.square(fanspeeds-1050)[:, np.newaxis]
         thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzles_angles)
-        # print(f"\nk_f: {self.k_f} \nomega_squared: \n{fanspeeds_squared}, \nthrustdirections(phi_state): \n{thrustdirections(phi_state)} \n thrust_vectors: \n{thrust_vectors}")
         return thrust_vectors
     
     def compute_forces_and_torques(self, thrust_vectors):
@@ -127,39 +124,24 @@ class MavEnv(gym.Env):
         # Extract current state
         position = self.state[0:3]
         orientation = R.from_quat(self.state[3:7])
-        print(f"q_k: {self.state[3:7]}, orientation_k rpy: {orientation.as_euler('xyz')}")
         lin_vel = self.state[7:10]
         ang_vel = self.state[10:13]
-        
 
         # Update angular velocity and orientation
         ang_acc = torque / self.inertia # TODO np.cross(ang_vel, self.inertia @ angular_velocity)
+        ang_vel += ang_acc * self.dt
 
         # Insert your ang_vel here! for example:
-        ang_vel = np.array([np.pi/4, 0, 0])
-        print(f"ang_vel: {ang_vel}")
-        orientation *= R.from_rotvec(ang_vel * self.dt) # TODO calculate quaternion orientation from ang_vel
-        print(f"q_k+1: {orientation.as_quat()}, orientation_k+1: {orientation.as_euler('xyz', degrees=True)}")
-        
-        # Update linear velocity and position
-        # TODO calculate gravity vector in body frame
+        orientation *= R.from_rotvec(ang_vel * self.dt)
+        # Calculate gravity vector in body frame
 
         # orientation is body frame in world frame.
         # To calculate a world vector in body frame, orientation.inv() is used!
-
-        print(f"orientation: {orientation.as_quat()}")
-        start = time.time()
+        # TODO: I've got two ways to work with rotations. Which one to chose?
         g_bodyframe = quaternion_rotate_vector(orientation.inv().as_quat(), self.g)
-        end = time.time()
-        print(f"g_bodyframe: {g_bodyframe}, time: {end - start}")
-
-        start = time.time()
         g_body_frame = orientation.inv().apply(self.g)
-        end = time.time()
-        print(f"g_body: {g_body_frame}, time: {end - start}")
-
-        # I've got two ways to work with rotations. Which one to chose?
-
+        
+        # Update linear velocity and position
         lin_acc = force / self.mass - g_body_frame # TODO NE eqt. np.cross(ang_vel, lin_vel)
         lin_vel += lin_acc * self.dt
         position += orientation.apply(lin_vel) * self.dt
@@ -176,12 +158,17 @@ class MavEnv(gym.Env):
             ang_acc
         ])
 
-        obs = np.concatenate([self.state[7:13], g_body_frame])
+        obs = np.concatenate([lin_vel, ang_vel, g_body_frame])
+
+        # Terminate if velocity is going crazy
+        if (np.any(np.abs(lin_vel) > 100) or np.any(np.abs(ang_vel) > 100)):
+            terminated = True
 
         # Compute reward
         velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
         
-        reward = -0.001*velocity_penalty
+        # Gets 1 reward for every flying frame
+        reward = 0.001 - 0.001*velocity_penalty
         
         # Check if truncated
         self.step_counter += 1
@@ -205,13 +192,12 @@ def plot_info(observations, infos, actions, rewards):
         axs[0,0].plot(states[:,i], label=f"position {i}")
         axs[0,0].legend()
 
-    q = states[3:7]
+    q = states[:, 3:7]
     rpy = R.from_quat(q).as_euler('xyz', degrees=True)
-    for i in range(3, 6, 1):
-        axs[0,1].plot(rpy[0], label=f"roll [°]")
-        axs[0,1].plot(rpy[1], label=f"pitch [°]")
-        axs[0,1].plot(rpy[2], label=f"yaw [°]")
-        axs[0,1].legend()
+    axs[0,1].plot(rpy[:, 0], label=f"roll [°]")
+    axs[0,1].plot(rpy[:, 1], label=f"pitch [°]")
+    axs[0,1].plot(rpy[:, 2], label=f"yaw [°]")
+    axs[0,1].legend()
 
     for i in range(7, 10, 1):
         axs[1,0].plot(states[:,i], label=f"lin_vel {i}")
@@ -231,16 +217,22 @@ def plot_info(observations, infos, actions, rewards):
 
     for i in range(19, 22, 1):
         axs[3,0].plot(states[:,i], label=f"fan_speeds {i}")
-        axs[3,0].plot(actions[:,i-12], label=f"fan_speeds actions{i}")
+        axs[3,0].plot(actions[:,i-19], label=f"fan_speeds actions{i}")
         axs[3,0].legend()
 
     for i in range(22, 28, 1):
         axs[3,1].plot(states[:,i], label=f"nozzle_angles {i}")
-        axs[3,1].plot(actions[:,i-12], label=f"nozzle_angles actions{i}", linestyle='--')
+        axs[3,1].plot(actions[:,i-19], label=f"nozzle_angles actions{i}", linestyle='--')
         axs[3,1].legend()
     
     axs[4,0].plot(rewards, label="Reward", marker='.', linestyle='', markersize=3)
     axs[4,0].legend()
+
+    # Plot gravity vector in bodyframe
+    axs[4,1].plot(observations[:, 6], label=f"g_bodyframe_x")
+    axs[4,1].plot(observations[:, 7], label=f"g_bodyframe_y")
+    axs[4,1].plot(observations[:, 8], label=f"g_bodyframe_z")
+    axs[4,1].legend()
 
     plt.tight_layout()
     plt.show()
@@ -249,14 +241,14 @@ def train_MAV():
 
     env = MavEnv()
 
-    model = PPO.load("ppo_mav_model", env=env)
 
+    # model = PPO.load("ppo_mav_model", env=env)
     # Uncomment for new model
-    # model = PPO("MlpPolicy", env, verbose=1)
+    model = PPO("MlpPolicy", env, verbose=1)
 
     # eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
 
-    model.learn(total_timesteps=1_000_000)
+    model.learn(total_timesteps=10_000)
 
     model.save("ppo_mav_model")
 
@@ -272,12 +264,15 @@ def evaluate_model():
     infos = [info]
     actions = []
     rewards = []
+
+    terminated, truncated = False, False
     
-    for i in range(1000):
+    # One episode
+    while not (terminated or truncated):
 
         action, _states = model.predict(obs, deterministic=True)
 
-        obs, reward, done, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
 
         observations.append(obs)
         infos.append(info)
