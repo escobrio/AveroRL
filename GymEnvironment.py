@@ -5,6 +5,7 @@ from ForwardKinematics import thrustdirections, r_BE
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from Quaternion import quaternion_multiply, quaternion_rotate_vector
+from Plots import plot_episode
 import time
 
 class MavEnv(gym.Env):
@@ -55,7 +56,7 @@ class MavEnv(gym.Env):
                               0, 0, 0,       # angular velocity
                               0, 0, 0,       # linear acceleration
                               0, 0, 0,       # angular acceleration
-                              545, 545, 545, # fan speeds
+                              1545, 1545, 1545, # fan speeds
                               0.8, -1.25, 0.8, -1.25, 0.8, -1.25]) # nozzle angles
         
         q = self.state[3:7]
@@ -88,7 +89,7 @@ class MavEnv(gym.Env):
     # Compute thrust vectors [N] of the 3 nozzles in body frame
     def compute_thrust_vectors(self, nozzles_angles, fanspeeds):
         # thrust = k_f * (PWM - 1050)² * normal_vector
-        # In this case, using the commanded PWM signal, so -1050 is already subtracted:
+        # In this case, using the actual PWM signal, so -1050 is NOT already subtracted:
         fanspeeds_squared = np.square(fanspeeds-1050)[:, np.newaxis]
         thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzles_angles)
         return thrust_vectors
@@ -142,7 +143,7 @@ class MavEnv(gym.Env):
         g_body_frame = orientation.inv().apply(self.g)
         
         # Update linear velocity and position
-        lin_acc = force / self.mass - g_body_frame # TODO NE eqt. np.cross(ang_vel, lin_vel)
+        lin_acc = force / self.mass + g_body_frame # TODO NE eqt. np.cross(ang_vel, lin_vel)
         lin_vel += lin_acc * self.dt
         position += orientation.apply(lin_vel) * self.dt
         
@@ -152,90 +153,34 @@ class MavEnv(gym.Env):
             orientation.as_quat(),
             lin_vel,
             ang_vel,
-            fanspeeds,
-            nozzles_angles,
             lin_acc,
-            ang_acc
+            ang_acc,
+            fanspeeds,
+            nozzles_angles
         ])
 
         obs = np.concatenate([lin_vel, ang_vel, g_body_frame])
 
         # Terminate if velocity is going crazy
-        if (np.any(np.abs(lin_vel) > 100) or np.any(np.abs(ang_vel) > 100)):
+        if (np.any(np.abs(lin_vel) > 50) or np.any(np.abs(ang_vel) > 50)):
             terminated = True
 
         # Compute reward
         velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
         
-        # Gets 1 reward for every flying frame
-        reward = 0.001 - 0.001*velocity_penalty
+        # Gets 0.001 reward for every flying frame
+        reward = 0.001 - 0.001 * velocity_penalty
         
         # Check if truncated
         self.step_counter += 1
-        if (self.step_counter > 1000):
+        if (self.step_counter > 1_000):
             truncated = True
 
         info = {"state": self.state}
         
         return obs, reward, terminated, truncated, info
     
-def plot_info(observations, infos, actions, rewards):
 
-    observations = np.array(observations)
-    actions = np.array(actions)
-    states = np.array([info['state'] for info in infos])
-    rewards = np.array(rewards)
-
-    fig, axs = plt.subplots(5, 2, figsize=(20, 12))
-
-    for i in range(0, 3, 1):
-        axs[0,0].plot(states[:,i], label=f"position {i}")
-        axs[0,0].legend()
-
-    q = states[:, 3:7]
-    rpy = R.from_quat(q).as_euler('xyz', degrees=True)
-    axs[0,1].plot(rpy[:, 0], label=f"roll [°]")
-    axs[0,1].plot(rpy[:, 1], label=f"pitch [°]")
-    axs[0,1].plot(rpy[:, 2], label=f"yaw [°]")
-    axs[0,1].legend()
-
-    for i in range(7, 10, 1):
-        axs[1,0].plot(states[:,i], label=f"lin_vel {i}")
-        axs[1,0].legend()
-
-    for i in range(10, 13, 1):
-        axs[1,1].plot(states[:,i], label=f"ang_vel {i}")
-        axs[1,1].legend()
-
-    for i in range(13, 16, 1):
-        axs[2,0].plot(states[:,i], label=f"lin_acc {i}")
-        axs[2,0].legend()
-
-    for i in range(16, 19, 1):
-        axs[2,1].plot(states[:,i], label=f"ang_acc {i}")
-        axs[2,1].legend()
-
-    for i in range(19, 22, 1):
-        axs[3,0].plot(states[:,i], label=f"fan_speeds {i}")
-        axs[3,0].plot(actions[:,i-19], label=f"fan_speeds actions{i}")
-        axs[3,0].legend()
-
-    for i in range(22, 28, 1):
-        axs[3,1].plot(states[:,i], label=f"nozzle_angles {i}")
-        axs[3,1].plot(actions[:,i-19], label=f"nozzle_angles actions{i}", linestyle='--')
-        axs[3,1].legend()
-    
-    axs[4,0].plot(rewards, label="Reward", marker='.', linestyle='', markersize=3)
-    axs[4,0].legend()
-
-    # Plot gravity vector in bodyframe
-    axs[4,1].plot(observations[:, 6], label=f"g_bodyframe_x")
-    axs[4,1].plot(observations[:, 7], label=f"g_bodyframe_y")
-    axs[4,1].plot(observations[:, 8], label=f"g_bodyframe_z")
-    axs[4,1].legend()
-
-    plt.tight_layout()
-    plt.show()
 
 def train_MAV():
 
@@ -267,7 +212,7 @@ def evaluate_model():
 
     terminated, truncated = False, False
     
-    # One episode
+    # Run one episode
     while not (terminated or truncated):
 
         action, _states = model.predict(obs, deterministic=True)
@@ -279,7 +224,7 @@ def evaluate_model():
         actions.append(action)
         rewards.append(reward)
     
-    plot_info(observations, infos, actions, rewards)
+    plot_episode(observations, infos, actions, rewards)
     
 
 if __name__ == "__main__":
