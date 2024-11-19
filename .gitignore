@@ -1,4 +1,3 @@
-__pycache__/ForwardKinematics.cpython-38.pyc
-sample_commands/T10-cut.bag
-Pics
-logs
+__pycache__
+.vscode
+data/Pics

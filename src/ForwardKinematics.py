@@ -103,18 +103,21 @@ def main():
   # Example usage:
   # Set the six nozzle angles
   states_phi = np.array([0.80, -1.25, 0.81, -1.25, 0.79, -1.25]) # Nozzles pointing straight down.
-  print(f"\nThrust normal vectors for nozzle angles: {states_phi}: \n{thrustdirections(states_phi)}")
+  np.set_printoptions(precision=5, suppress=True)
+  print(f"\nThrust normal vectors for nozzle angles [rad]: {states_phi}: \n{thrustdirections(states_phi)}")
 
   # Set three fan speeds omega
-  states_omega = np.array([900, 800, 700])
-  omega_squared = np.square(states_omega)[:, np.newaxis]
-  k_f = 0.00006
+  states_omega = np.array([1600, 1600, 1600])
+  omega_squared = np.square(states_omega - 1050)[:, np.newaxis]
+  k_f = 0.00005749
+
   # Calculate thrust vectors
   thrust_vectors = k_f * omega_squared * thrustdirections(states_phi)
-  print(f"\n Thrust vector for fan speeds: {states_omega}, nozzle angles: {states_phi} and k_f = {k_f} :\n{thrust_vectors}")
+  print(f"\n Thrust vector [N] for fan speeds: {states_omega}, nozzle angles: {states_phi} and k_f = {k_f} :\n{thrust_vectors}")
 
+  # Calculate distance from bodyframe to endeffector 
   r_BE_1, r_BE_2, r_BE_3 = r_BE(states_phi)
-  print(f"\nr_BE_1, r_BE_2, r_BE_3 = \n{r_BE(states_phi)} ")
+  print(f"\nr_BE_1, r_BE_2, r_BE_3 [m]= \n{r_BE(states_phi)} ")
       
 if __name__ == "__main__":
   main()
