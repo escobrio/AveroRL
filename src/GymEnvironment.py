@@ -24,8 +24,8 @@ class MavEnv(gym.Env):
         # [fanspeed1_setpoint, fanspeed2_setpoint, fanspeed3_setpoint, #[rad]
         # nozzleangle1_setpoint, nozzleangle2_setpoint, nozzleangle3_setpoint, nozzleangle4_setpoint, nozzleangle5_setpoint, nozzleangle6_setpoint #[PWM]]
         self.action_space = gym.spaces.Box(
-            low=np.array([1050, 1050, 1050, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]),
-            high=np.array([1950, 1950, 1950, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi]),
+            low=np.array([-1, -1, -1, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]),
+            high=np.array([1, 1, 1, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi]),
             dtype=np.float32
         )
 
@@ -36,7 +36,7 @@ class MavEnv(gym.Env):
                               0, 0, 0,           # [10:13] angular velocity [rad/s]
                               0, 0, 0,           # [13:16] linear acc [m/s²]
                               0, 0, 0,           # [16:19] angular acc [rad/s²]
-                              1050, 1050, 1050,  # [19:22] fan speeds [PWM]
+                              0, 0, 0,  # [19:22] fan speeds [PWM]
                               0, 0, 0, 0, 0, 0]) # [22:28] nozzle angles [rad]
         
         # Physical and simulation parameters
@@ -59,7 +59,7 @@ class MavEnv(gym.Env):
                               0, 0, 0,       # angular velocity
                               0, 0, 0,       # linear acceleration
                               0, 0, 0,       # angular acceleration
-                              1545, 1545, 1545, # fan speeds
+                              0, 0, 0, # fan speeds
                               0.8, -1.25, 0.8, -1.25, 0.8, -1.25]) # nozzle angles
         
         q = self.state[3:7]
@@ -94,6 +94,7 @@ class MavEnv(gym.Env):
     def compute_thrust_vectors(self, nozzles_angles, fanspeeds):
         # thrust = k_f * (PWM - 1050)² * normal_vector
         # In this case, using the actual PWM signal, so -1050 is NOT already subtracted:
+        fanspeeds = 1050 + (fanspeeds + 1) * 450
         fanspeeds_squared = np.square(fanspeeds-1050)[:, np.newaxis]
         thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzles_angles)
         return thrust_vectors
@@ -162,14 +163,14 @@ class MavEnv(gym.Env):
         obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
 
         # Terminate if velocity is going crazy
-        if (np.any(np.abs(lin_vel) > 50) or np.any(np.abs(ang_vel) > 50)):
+        if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5)):
             terminated = True
 
         # Compute reward
         velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
         
         # Gets 0.001 reward for every flying frame
-        reward = 0.001 - 0.001 * velocity_penalty
+        reward = 1 - 0.01 * velocity_penalty - 0.01 * np.linalg.norm(action)
         
         # Check if truncated
         self.step_counter += 1
@@ -186,13 +187,13 @@ def train_MAV():
 
     env = MavEnv()
 
-    # model = PPO.load("ppo_mav_model", env=env)
+    model = PPO.load("data/ppo_mav_model", env=env)
     # Uncomment for new model
-    model = PPO("MlpPolicy", env, verbose=1)
+    # model = PPO("MlpPolicy", env, verbose=1)
 
     # eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
 
-    model.learn(total_timesteps=10_000)
+    model.learn(total_timesteps=50_000)
 
     model.save("data/ppo_mav_model")
 
@@ -229,6 +230,6 @@ def evaluate_model():
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    # train_MAV()
+    train_MAV()
     evaluate_model()
     
