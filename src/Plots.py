@@ -31,12 +31,12 @@ def plot_episode(observations, infos, actions, rewards):
     axs[0,1].set_title("Orientation")
     axs[0,1].set_ylabel("[°]")
     axs[0,1].set_xlabel("timesteps")
+    axs[0,1].set_yticks([-180, -90, 0, 90, 180])
     q = states[:, 3:7]
     rpy = R.from_quat(q).as_euler('xyz', degrees=True)
     axs[0,1].plot(rpy[:, 0], label=f"roll [°]")
     axs[0,1].plot(rpy[:, 1], label=f"pitch [°]")
     axs[0,1].plot(rpy[:, 2], label=f"yaw [°]")
-    axs[0,1].set_yticks([-180, -90, 0, 90, 180])
     axs[0,1].grid(True, alpha=0.3)
     axs[0,1].legend()
 
@@ -86,17 +86,17 @@ def plot_episode(observations, infos, actions, rewards):
     axs[3,0].set_yticks([1050, 1500, 1950])
     for i in range(19, 22, 1):
         axs[3,0].plot(1050 + 450 * (states[:, i] + 1), label=f"fanspeeds_{i-19}", color=basic_colors[i-19])
-        axs[3,0].plot(1050 + 450 * (actions[:, i-19] + 1), label=f"fanspeeds_setpoints{i-19}", linestyle='--', color=basic_colors[i-19])
+        axs[3,0].plot(1050 + 450 * (actions[:, i-19] + 1), label=f"fanspeeds_setpoints{i-19}", linestyle='--', color=basic_colors[i-19], alpha=0.7)
     axs[3,0].grid(True, alpha=0.3)
     axs[3,0].legend()
 
     axs[3,1].set_title("Nozzle angles")
-    axs[3,1].set_ylabel("[rad]")
+    axs[3,1].set_ylabel("[°]")
     axs[3,1].set_xlabel("timesteps")
-    axs[3,1].set_yticks([-np.pi/2, -np.pi/4, 0, np.pi/4, np.pi/2])
+    axs[3,1].set_yticks([-180, -135, -90, -45, 0, 45, 90, 135, 180])
     for i in range(22, 28, 1):
-        axs[3,1].plot(states[:, i], label=f"nozzle_angles_{i-19}", color=basic_colors[i-22])
-        axs[3,1].plot(actions[:, i-19], label=f"nozzle_angles_setpoints{i-19}", linestyle='--', color=basic_colors[i-22])
+        axs[3,1].plot(np.rad2deg(states[:, i]), label=f"nozzle_angles_{i-19}", color=basic_colors[i-22])
+        axs[3,1].plot(np.rad2deg(actions[:, i-19]), label=f"nozzle_angles_setpoints{i-19}", linestyle='--', color=basic_colors[i-22], alpha=0.7)
     axs[3,1].grid(True, alpha=0.3)
     axs[3,1].legend()
     

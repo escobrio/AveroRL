@@ -51,23 +51,42 @@ class MavEnv(gym.Env):
         
     def reset(self, seed=None):
         super().reset(seed=seed)
-        # Initialize state: 
-        # TODO: randomize
-        self.state = np.array([0, 0, 0,      # position
-                              0, 0, 0, 1,    # orientation quaternion [x, y, z, w]
-                              0, 0, 0,       # linear velocity
-                              0, 0, 0,       # angular velocity
-                              0, 0, 0,       # linear acceleration
-                              0, 0, 0,       # angular acceleration
-                              0, 0, 0, # fan speeds
-                              0.8, -1.25, 0.8, -1.25, 0.8, -1.25]) # nozzle angles
-        
-        q = self.state[3:7]
-        lin_vel = self.state[7:10]
-        ang_vel = self.state[10:13]
-        g_bodyframe = quaternion_rotate_vector(q, self.g)
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
         self.step_counter = 0
+        # Initialize state: 
+        
+        # Randomize position (x, y, z)
+        position = np.random.uniform(low=-10, high=10, size=3)  # Example range [-10, 10] for each axis
+        # position = np.array([0, 0, 0])
+
+        # Randomize orientation quaternion [x, y, z, w] (ensure it's a valid quaternion)
+        rpy = np.random.uniform(low=-30, high=30, size=3)
+        orientation = R.as_quat(R.from_euler('xyz', rpy, degrees=True))
+        # orientation = np.array([0, 0, 0, 1])
+
+        # Randomize linear and angular velocity and acceleration
+        lin_vel = np.random.uniform(low=-2, high=2, size=3)  # Example range [-5, 5]
+        ang_vel = np.random.uniform(low=-2, high=2, size=3)  # Example range [-5, 5]
+        lin_acc = np.random.uniform(low=-2, high=2, size=3)  # Example range [-2, 2]
+        ang_acc = np.random.uniform(low=-2, high=2, size=3)  # Example range [-2, 2]
+
+        # Randomize actuators
+        fan_speeds = np.random.uniform(low=-0.5, high=0.5, size=3)  # Example range [0, 100]
+        nozzle_angles = np.random.uniform(low=-1, high=1, size=6)  # Example range [-1.5, 1.5]
+
+        # Combine all into state vector
+        self.state = np.concatenate([
+            position, 
+            orientation, 
+            lin_vel, 
+            ang_vel, 
+            lin_acc, 
+            ang_acc, 
+            fan_speeds, 
+            nozzle_angles
+        ])
+        
+        g_bodyframe = quaternion_rotate_vector(orientation, self.g)
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
         info = {"state": self.state}
         return obs, info
     
@@ -169,8 +188,8 @@ class MavEnv(gym.Env):
         # Compute reward
         velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
         
-        # Gets 0.001 reward for every flying frame
-        reward = 1 - 0.1 * velocity_penalty - 0.1 * np.linalg.norm(action)
+        # Gets 1 reward for every flying frame
+        reward = 1 - 0.1 * velocity_penalty - 0.01 * np.linalg.norm(action)
         
         # Check if truncated
         self.step_counter += 1
@@ -187,11 +206,11 @@ def train_MAV():
 
     env = MavEnv()
 
-    # model = PPO.load("data/ppo_mav_model", env=env)
+    model = PPO.load("data/ppo_mav_model", env=env)
     # Uncomment for new model
-    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    # model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    model.learn(total_timesteps=200_000)
+    model.learn(total_timesteps=50_000)
 
     model.save("data/ppo_mav_model")
 
@@ -202,6 +221,16 @@ def evaluate_model():
     model = PPO.load("data/ppo_mav_model")
 
     obs, info = env.reset()
+    print(f"""Evaluating Model with inital state: 
+          position: {info['state'][:3]} 
+          orientation: {info['state'][3:7]} 
+          lin_vel: {info['state'][7:10]} 
+          ang_vel: {info['state'][10:13]} 
+          lin_acc: {info['state'][13:16]} 
+          ang_acc: {info['state'][16:19]} 
+          fanspeeds: {info['state'][19:22]} 
+          nozzles_angles {info['state'][22:28]}""")
+
     # Record states and actions
     observations = [obs]
     infos = [info]
