@@ -170,7 +170,7 @@ class MavEnv(gym.Env):
         velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
         
         # Gets 0.001 reward for every flying frame
-        reward = 1 - 0.01 * velocity_penalty - 0.01 * np.linalg.norm(action)
+        reward = 1 - 0.1 * velocity_penalty - 0.1 * np.linalg.norm(action)
         
         # Check if truncated
         self.step_counter += 1
@@ -187,13 +187,11 @@ def train_MAV():
 
     env = MavEnv()
 
-    model = PPO.load("data/ppo_mav_model", env=env)
+    # model = PPO.load("data/ppo_mav_model", env=env)
     # Uncomment for new model
-    # model = PPO("MlpPolicy", env, verbose=1)
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    # eval_callback = EvalCallback(eval_env, best_model_save_path="./logs/", log_path="./logs/", eval_freq=1000, deterministic=True, render=False)
-
-    model.learn(total_timesteps=50_000)
+    model.learn(total_timesteps=200_000)
 
     model.save("data/ppo_mav_model")
 
