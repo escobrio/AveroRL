@@ -230,6 +230,6 @@ def evaluate_model():
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    train_MAV()
+    # train_MAV()
     evaluate_model()
     
