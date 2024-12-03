@@ -7,25 +7,27 @@ import time
 from ForwardKinematics import thrustdirections, r_BE
 from Quaternion import quaternion_rotate_vector
 from Plots import plot_episode
+from torch.utils.tensorboard import SummaryWriter
 
 # Gymnasium environment to train RL agent
 class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
+        self.writer = None
 
-        # Observation space: [lin_vel, ang_vel, gravity vector in body frame]
+        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 9),
-            high=np.array([np.inf] * 9),
+            low=np.array([-np.inf] * 18),
+            high=np.array([np.inf] * 18),
             dtype=np.float32
         )
         
         # Actions space: 
-        # [fanspeed1_setpoint, fanspeed2_setpoint, fanspeed3_setpoint, #[rad]
-        # nozzleangle1_setpoint, nozzleangle2_setpoint, nozzleangle3_setpoint, nozzleangle4_setpoint, nozzleangle5_setpoint, nozzleangle6_setpoint #[PWM]]
+        # [fanspeed1_setpoint_dot, fanspeed2_setpoint_dot, fanspeed3_setpoint_dot, #[PWM/s]
+        # nozzleangle1_setpoint_dot, nozzleangle2_setpoint_dot, nozzleangle3_setpoint_dot, nozzleangle4_setpoint_dot, nozzleangle5_setpoint_dot, nozzleangle6_setpoint_dot #[rad/s]]
         self.action_space = gym.spaces.Box(
-            low=np.array([-1, -1, -1, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]),
-            high=np.array([1, 1, 1, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi]),
+            low=np.array([-1, -1, -1, -1, -1, -1, -1, -1, -1]),
+            high=np.array([1, 1, 1, 1, 1, 1, 1, 1, 1]),
             dtype=np.float32
         )
 
@@ -49,14 +51,16 @@ class MavEnv(gym.Env):
         self.step_counter = 0
         self.dt = 0.01  # [s]
         
+    def set_writer(self, writer):
+        self.writer = writer
+    
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
         # Initialize state: 
         
         # Randomize position (x, y, z)
-        position = np.random.uniform(low=-10, high=10, size=3)  # Example range [-10, 10] for each axis
-        # position = np.array([0, 0, 0])
+        position = np.array([0, 0, 0])
 
         # Randomize orientation quaternion [x, y, z, w] (ensure it's a valid quaternion)
         rpy = np.random.uniform(low=-30, high=30, size=3)
@@ -64,14 +68,14 @@ class MavEnv(gym.Env):
         # orientation = np.array([0, 0, 0, 1])
 
         # Randomize linear and angular velocity and acceleration
-        lin_vel = np.random.uniform(low=-2, high=2, size=3)  # Example range [-5, 5]
-        ang_vel = np.random.uniform(low=-2, high=2, size=3)  # Example range [-5, 5]
-        lin_acc = np.random.uniform(low=-2, high=2, size=3)  # Example range [-2, 2]
-        ang_acc = np.random.uniform(low=-2, high=2, size=3)  # Example range [-2, 2]
+        lin_vel = np.random.uniform(low=-2, high=2, size=3)
+        ang_vel = np.random.uniform(low=-2, high=2, size=3)
+        lin_acc = np.random.uniform(low=-2, high=2, size=3)
+        ang_acc = np.random.uniform(low=-2, high=2, size=3)
 
         # Randomize actuators
-        fan_speeds = np.random.uniform(low=-0.5, high=0.5, size=3)  # Example range [0, 100]
-        nozzle_angles = np.random.uniform(low=-1, high=1, size=6)  # Example range [-1.5, 1.5]
+        fan_speeds = np.random.uniform(low=-0.5, high=0.5, size=3)
+        nozzle_angles = np.random.uniform(low=-1, high=1, size=6)
 
         # Combine all into state vector
         self.state = np.concatenate([
@@ -85,8 +89,8 @@ class MavEnv(gym.Env):
             nozzle_angles
         ])
         
-        g_bodyframe = quaternion_rotate_vector(orientation, self.g)
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
+        g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fan_speeds, nozzle_angles])
         info = {"state": self.state}
         return obs, info
     
@@ -94,18 +98,20 @@ class MavEnv(gym.Env):
     # tau [s] is the empirical time constant of the actuator state following a setpoint [s]
     # state_dot_k = (1/tau) * (setpoint_k - state)
     # state_{k+1} = state_k + state_dot_k * dT
+    # action is change in actuator setpoint
     def first_order_actuator_models(self, action):
         # Update nozzle angle [rad] according to first order model of error = setpoint - state
-        nozzles_setpoint = action[3:]
         nozzles_state = self.state[22:28]
-        nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
+        nozzles_setpoint = nozzles_state + action[3:]                       # TODO: nozzle_setpoint = nozzle_state + phi_dot / k_phi
+        nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)       # TODO: nozzle_dot = self.k_phi_randomized * (nozzles_setpoint - nozzle_state)
         nozzles_state += nozzles_dot * self.dt
 
         # Update fan speed [PWM] according to first order model of error = setpoint - state
-        fanspeeds_setpoint = action[:3]
         fanspeeds_state = self.state[19:22]
-        fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
+        fanspeeds_setpoint = fanspeeds_state + action[:3]                   # TODO: Same as above
+        fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)   # TODO: Here fanspeeds is normalized [-1,1], but k_omega still has to be converted
         fanspeeds_state += fanspeeds_dot * self.dt
+        fanspeeds_state = fanspeeds_state.clip(-1, 1)
 
         return nozzles_state, fanspeeds_state
 
@@ -179,17 +185,24 @@ class MavEnv(gym.Env):
             nozzles_angles
         ])
 
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fanspeeds, nozzles_angles])
+
+        # Reward Function
+        lin_vel_penalty = np.linalg.norm(lin_vel)
+        ang_vel_penalty = np.linalg.norm(ang_vel)
+        action_penalty = np.linalg.norm(action)
+        reward = 1 - 0.15 * lin_vel_penalty - 0.15 * ang_vel_penalty - 0.01 * action_penalty
+
+        # Log the reward parts to TensorBoard
+        if self.writer:
+            self.writer.add_scalar("reward/lin_vel_penalty", - lin_vel_penalty, self.step_counter)
+            self.writer.add_scalar("reward/ang_vel_penalty", - ang_vel_penalty, self.step_counter)
+            self.writer.add_scalar("reward/action_penalty", - action_penalty, self.step_counter)
+            self.writer.add_scalar("reward/total", reward, self.step_counter)
 
         # Terminate if velocity is going crazy
         if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5)):
-            terminated = True
-
-        # Compute reward
-        velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
-        
-        # Gets 1 reward for every flying frame
-        reward = 1 - 0.1 * velocity_penalty - 0.01 * np.linalg.norm(action)
+            terminated = True        
         
         # Check if truncated
         self.step_counter += 1
@@ -206,11 +219,15 @@ def train_MAV():
 
     env = MavEnv()
 
-    model = PPO.load("data/ppo_mav_model", env=env)
-    # Uncomment for new model
-    # model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    # Uncomment to load model, not recommended
+    # model = PPO.load("data/ppo_mav_model", env=env)
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    model.learn(total_timesteps=50_000)
+    writer = SummaryWriter(log_dir="./logs/ppo_mav/")
+
+    env.set_writer(writer)
+
+    model.learn(total_timesteps=500_000)
 
     model.save("data/ppo_mav_model")
 
@@ -223,7 +240,7 @@ def evaluate_model():
     obs, info = env.reset()
     print(f"""Evaluating Model with inital state: 
           position: {info['state'][:3]} 
-          orientation: {info['state'][3:7]} 
+          orientation rpy: {(R.from_quat(info['state'][3:7]).as_euler('xyz', degrees=True))} 
           lin_vel: {info['state'][7:10]} 
           ang_vel: {info['state'][10:13]} 
           lin_acc: {info['state'][13:16]} 
