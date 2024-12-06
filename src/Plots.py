@@ -158,11 +158,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[0,1].set_title("Nozzle angles", loc='center', y=0.92)
     axs2[0,1].set_ylabel("[°]")
     axs2[0,1].set_xlabel("timesteps")
-    axs2[0,1].set_yticks(np.arange(-360, 360, 30))
-    # for i in range(22, 28, 1):
-    #     axs2[0,1].plot(np.rad2deg(states[:, i]), color=colors[i-22], label=f"phi{i-21}", alpha=0.5)
-    #     axs2[0,1].plot(np.rad2deg(states[:, i]), '.', markersize=1, color=colors[i-22])
-    #     axs2[0,1].plot(np.rad2deg(states[:, i+9]), '.', markersize=1, linestyle='--', color=colors[i-22], label=f"phi_setpoints{i-21}", alpha=0.7)
+    # axs2[0,1].set_yticks(np.arange(-360, 360, 30))
     for i in range(3):
         for j in range(2):
             axs2[0,1].plot(np.rad2deg(states[:, 22+i*2+j]), color=colors[i*2+j], label=fr"$\varphi_{{{i+1}{j+1}}}$", alpha=0.5)
@@ -183,4 +179,5 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[1,1].legend(loc='center right')
 
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    return fig, fig2

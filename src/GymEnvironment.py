@@ -2,6 +2,7 @@ import numpy as np
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.logger import Figure
 from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 import time
@@ -67,21 +68,22 @@ class MavEnv(gym.Env):
         position = np.array([0, 0, 0])
 
         # Randomize orientation quaternion [x, y, z, w] (ensure it's a valid quaternion)
-        rpy = np.random.uniform(low=-5, high=5, size=3)
-        orientation = R.as_quat(R.from_euler('xyz', rpy, degrees=True))
-        # orientation = np.array([0, 0, 0, 1])
+        # rpy = np.random.uniform(low=-5, high=5, size=3)
+        # orientation = R.as_quat(R.from_euler('xyz', rpy, degrees=True))
+        orientation = np.array([0, 0, 0, 1])
 
         # Randomize linear and angular velocity and acceleration
-        lin_vel = np.random.uniform(low=-0.5, high=0.5, size=3)
-        ang_vel = np.random.uniform(low=-0.5, high=0.5, size=3)
-        lin_acc = np.random.uniform(low=-0.5, high=0.5, size=3)
-        ang_acc = np.random.uniform(low=-0.5, high=0.5, size=3)
+        lin_vel = np.random.uniform(low=-0.0, high=0.0, size=3)
+        ang_vel = np.random.uniform(low=-0.0, high=0.0, size=3)
+        lin_acc = np.random.uniform(low=-0.0, high=0.0, size=3)
+        ang_acc = np.random.uniform(low=-0.0, high=0.0, size=3)
 
         # Randomize actuators
-        fan_speeds = np.random.uniform(low=0.4, high=0.6, size=3)
-        nozzle_angles = np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]) + np.random.uniform(-0.1, 0.1, size=6)
-        fanspeeds_setpoints = np.array([0, 0, 0])
-        nozzle_setpoints = np.array([0, 0, 0, 0, 0, 0])
+        # fan_speeds = np.random.uniform(low=0.5, high=0.7, size=3)
+        fan_speeds = np.array([0.61, 0.61, 0.61])
+        nozzle_angles = np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]) 
+        fanspeeds_setpoints = np.array([0.61, 0.61, 0.61])
+        nozzle_setpoints = np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25])
 
 
         # Combine all into state vector
@@ -113,13 +115,14 @@ class MavEnv(gym.Env):
         nozzles_setpoint = self.state[31:37]
         # Update setpoints and nozzle_angles [rad] according to first order model
         nozzles_setpoint += action[3:] / self.k_phi                             # Update setpoint with inverse 1° model
+        nozzles_setpoint = nozzles_setpoint.clip(-3*np.pi, 3*np.pi)
         nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)           # TODO: nozzle_dot = self.k_phi_randomized * (nozzles_setpoint - nozzle_state)
         nozzles_state += nozzles_dot * self.dt
 
         fanspeeds_state = self.state[19:22]
         fanspeeds_setpoint = self.state[28:31]
         # Update setpoints and normalized fanspeeds according to first order model
-        fanspeeds_setpoint += action[:3] / self.k_omega                         # Same as above
+        fanspeeds_setpoint += action[:3] / self.k_omega                          # Same as above
         fanspeeds_setpoint = fanspeeds_setpoint.clip(0, 1)
         fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)   # TODO: Same as above
         fanspeeds_state += fanspeeds_dot * self.dt
@@ -203,23 +206,20 @@ class MavEnv(gym.Env):
         lin_vel_penalty = np.linalg.norm(lin_vel)
         ang_vel_penalty = np.linalg.norm(ang_vel)
         action_penalty = np.linalg.norm(action)
+        fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
+        nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         reward_info = {"lin_vel_penalty": lin_vel_penalty, "ang_vel_penalty": ang_vel_penalty, "action_penalty": action_penalty}
-        reward = 1 - 0.1 * lin_vel_penalty - 0.1 * ang_vel_penalty - 0.01 * action_penalty
+        reward = 1 - 0.01 * lin_vel_penalty - 0.01 * ang_vel_penalty - 0.0 * action_penalty - 0.0 * fanspeed_penalty - 0.0 * nozzles_penalty
 
-        # Log the reward parts to TensorBoard
-        # if self.writer:
-        #     self.writer.add_scalar("reward/lin_vel_penalty", - lin_vel_penalty, self.step_counter)
-        #     self.writer.add_scalar("reward/ang_vel_penalty", - ang_vel_penalty, self.step_counter)
-        #     self.writer.add_scalar("reward/action_penalty", - action_penalty, self.step_counter)
-        #     self.writer.add_scalar("reward/total", reward, self.step_counter)
-
-        # Terminate if velocity is going crazy
-        if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5)):
+        # Terminate if velocity is going crazy or it rotates > 180°
+        if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5) or np.any(np.abs(orientation.as_euler('xyz', degrees=True) > 135))):
+            reward -= 5
             terminated = True        
         
         # Truncate episode after 1000 timesteps
         self.step_counter += 1
         if (self.step_counter > 1_000):
+            reward += 5
             truncated = True
 
         info = {"state": self.state, "reward": reward_info}
@@ -236,31 +236,34 @@ def train_MAV():
     # model = PPO.load("data/ppo_mav_model", env=env)
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    # writer = SummaryWriter(log_dir="./logs/ppo_mav/")
+    eval_callback = TensorboardCallback(env=env, eval_freq=50_000, evaluate_fct=evaluate_model, verbose=1)
 
-    # env.set_writer(writer)
-
-    model.learn(total_timesteps=50_000, callback=TensorboardCallback())
+    model.learn(total_timesteps=500_000, callback=eval_callback)
 
     model.save("data/ppo_mav_model")
 
 class TensorboardCallback(BaseCallback):
-    def __init__(self, verbose=0):
+    def __init__(self, env, eval_freq, evaluate_fct, verbose=0):
         super().__init__(verbose)
+        self.eval_env = env
+        self.eval_freq = eval_freq
+        self.evaluate_fct = evaluate_fct
 
     def _on_step(self) -> bool:
-        value = np.random.random()
-        # print(f"\n---\nself.locals: {self.locals}\n---\nself.globals:")
-        # print(f"\n---\nrewards: {self.locals['infos'][0]['reward']['lin_vel_penalty']}")
-        self.logger.record("reward/lin_vel_penalty", - self.locals['infos'][0]['reward']['lin_vel_penalty'])
-        self.logger.record("reward/ang_vel_penalty", - self.locals['infos'][0]['reward']['ang_vel_penalty'])
-        self.logger.record("reward/action_penalty", - self.locals['infos'][0]['reward']['action_penalty'])
+        if self.n_calls % self.eval_freq == 0:
+            if self.verbose > 0:
+                print(f"\nEvaluating at step {self.n_calls}...")
+
+            fig1, fig2 = self.evaluate_fct(self.model, self.eval_env)
+            self.logger.record("plots/fig1", Figure(fig1, close=True), exclude=("stdout", "log", "json", "csv"))
+            self.logger.record("plots/fig2", Figure(fig2, close=True), exclude=("stdout", "log", "json", "csv"))
+            plt.close('all')
         return True    
 
-def evaluate_model():
-    env = MavEnv()
+def evaluate_model(model, env):
+    # env = MavEnv()
     
-    model = PPO.load("data/ppo_mav_model")
+    # model = PPO.load("data/ppo_mav_model")
 
     obs, info = env.reset()
     print(f"""Evaluating Model with inital state: 
@@ -280,14 +283,12 @@ def evaluate_model():
     rewards = []
 
     terminated, truncated = False, False
-    action_constant = np.random.uniform(low=-1, high=1, size=9)
 
     # Run one episode
     while not (terminated or truncated):
 
         action, _states = model.predict(obs, deterministic=True)
         # TODO: Remove hardcoded action:
-        action = action_constant
 
         obs, reward, terminated, truncated, info = env.step(action)
 
@@ -297,13 +298,17 @@ def evaluate_model():
         infos.append(copy.deepcopy(info))
         actions.append(copy.deepcopy(action))
         rewards.append(copy.deepcopy(reward))
-    
-    plot_episode(observations, infos, actions, rewards)
-    
+
+    env.close()
+    fig1, fig2 = plot_episode(observations, infos, actions, rewards)
+    return fig1, fig2
 
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    # train_MAV()
-    evaluate_model()
+    train_MAV()
     
+    # model = PPO.load("data/ppo_mav_model")
+    # env = MavEnv()
+    # evaluate_model(model, env)
+    # plt.show()
