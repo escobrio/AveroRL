@@ -16,7 +16,6 @@ import copy
 class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
-        # self.writer = None
 
         # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles]
         self.observation_space = gym.spaces.Box(
@@ -44,7 +43,7 @@ class MavEnv(gym.Env):
                               0, 0, 0,           # [19:22] fan speeds \in [0, 1]
                               0, 0, 0, 0, 0, 0,  # [22:28] nozzle angles [rad]
                               0, 0, 0,           # [28:31] fan speeds setpoints \in [0, 1]
-                              0, 0, 0, 0, 0, 0]) # [31:37] nozzle angles setpoints 
+                              0, 0, 0, 0, 0, 0]) # [31:37] nozzle angles setpoints  [rad]
         
         # Physical and simulation parameters
         self.mass = 5.218  # [kg]
@@ -55,10 +54,7 @@ class MavEnv(gym.Env):
         self.k_omega = 12 /2                # [Hz], First order fan speed model TODO this is actually k_forceomega TODO: 12 Hz is Force following setpoint. 12/2 is for pwm, but TODO!
         self.step_counter = 0
         self.dt = 0.01  # [s]
-        
-    # def set_writer(self, writer):
-    #     self.writer = writer
-    
+            
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
@@ -114,7 +110,8 @@ class MavEnv(gym.Env):
         nozzles_state = self.state[22:28]
         nozzles_setpoint = self.state[31:37]
         # Update setpoints and nozzle_angles [rad] according to first order model
-        nozzles_setpoint += action[3:] / self.k_phi                             # Update setpoint with inverse 1° model
+        # nozzles_setpoint += action[3:] / self.k_phi                           # TODO: Update setpoint with inverse 1° model
+        nozzles_setpoint = nozzles_state + action[3:]
         nozzles_setpoint = nozzles_setpoint.clip(-3*np.pi, 3*np.pi)
         nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)           # TODO: nozzle_dot = self.k_phi_randomized * (nozzles_setpoint - nozzle_state)
         nozzles_state += nozzles_dot * self.dt
@@ -122,7 +119,8 @@ class MavEnv(gym.Env):
         fanspeeds_state = self.state[19:22]
         fanspeeds_setpoint = self.state[28:31]
         # Update setpoints and normalized fanspeeds according to first order model
-        fanspeeds_setpoint += action[:3] / self.k_omega                          # Same as above
+        # fanspeeds_setpoint += action[:3] / self.k_omega                       # TODO: Same as above
+        fanspeeds_setpoint = fanspeeds_state + action[:3]
         fanspeeds_setpoint = fanspeeds_setpoint.clip(0, 1)
         fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)   # TODO: Same as above
         fanspeeds_state += fanspeeds_dot * self.dt
@@ -249,6 +247,14 @@ class TensorboardCallback(BaseCallback):
         self.eval_freq = eval_freq
         self.evaluate_fct = evaluate_fct
 
+    def _on_training_start(self):
+        writer = SummaryWriter(log_dir=self.logger.dir)
+        with open("src/GymEnvironment.py", "r") as f:
+            code_content = f.read()
+
+        writer.add_text("GymEnvironment.py", f"```\n{code_content}```", global_step=0)
+        writer.close()
+
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0:
             if self.verbose > 0:
@@ -261,9 +267,6 @@ class TensorboardCallback(BaseCallback):
         return True    
 
 def evaluate_model(model, env):
-    # env = MavEnv()
-    
-    # model = PPO.load("data/ppo_mav_model")
 
     obs, info = env.reset()
     print(f"""Evaluating Model with inital state: 
@@ -288,7 +291,6 @@ def evaluate_model(model, env):
     while not (terminated or truncated):
 
         action, _states = model.predict(obs, deterministic=True)
-        # TODO: Remove hardcoded action:
 
         obs, reward, terminated, truncated, info = env.step(action)
 
