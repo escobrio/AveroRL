@@ -14,7 +14,7 @@ import copy
 
 # Gymnasium environment to train RL agent
 class MavEnv(gym.Env):
-    def __init__(self, iteration):
+    def __init__(self):
         super().__init__()
 
         # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles]
@@ -45,7 +45,6 @@ class MavEnv(gym.Env):
                               0, 0, 0,           # [28:31] fanspeeds setpoints \in [0, 1]
                               0, 0, 0, 0, 0, 0]) # [31:37] nozzle angles setpoints  [rad]
         
-        self.iteration = iteration                        # iterator
         # Physical and simulation parameters
         self.mass = 5.218  # [kg]
         self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # [kg*m^2], TODO: non-diagonal elements
@@ -66,7 +65,7 @@ class MavEnv(gym.Env):
         self.step_counter = 0
 
         # Randomize parameters
-        self.k_f = 0.00005749 + np.random.uniform(- (2**self.iteration) * 0.000001, (2 ** self.iteration) * 0.000001)    # Learned to hover with +- 27.83%
+        self.k_f = 0.00005749 + np.random.uniform(- 0.00000575, 0.00000575)    # +- 10%
 
         # Initialize state: 
         
@@ -242,18 +241,17 @@ class MavEnv(gym.Env):
 
 def train_MAV():
 
-    for iteration in range(8):
-        env = MavEnv(iteration)
+    env = MavEnv()
 
-        # Uncomment to load model, not recommended
-        # model = PPO.load("data/ppo_mav_model", env=env)
-        model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    # Uncomment to load model, not recommended
+    # model = PPO.load("data/ppo_mav_model", env=env)
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-        eval_callback = TensorboardCallback(env=env, eval_freq=200_000, evaluate_fct=evaluate_model, verbose=1)
+    eval_callback = TensorboardCallback(env=env, eval_freq=200_000, evaluate_fct=evaluate_model, verbose=1)
 
-        model.learn(total_timesteps=1_000_000, callback=eval_callback)
+    model.learn(total_timesteps=1_000_000, callback=eval_callback)
 
-        model.save("data/ppo_mav_model")
+    model.save("data/ppo_mav_model")
 
 class TensorboardCallback(BaseCallback):
     def __init__(self, env, eval_freq, evaluate_fct, verbose=0):
@@ -323,9 +321,9 @@ def evaluate_model(model, env):
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    train_MAV()
+    # train_MAV()
     
-    # model = PPO.load("data/ppo_mav_model")
-    # env = MavEnv()
-    # evaluate_model(model, env)
-    # plt.show()
+    model = PPO.load("data/ppo_mav_model")
+    env = MavEnv()
+    evaluate_model(model, env)
+    plt.show()
