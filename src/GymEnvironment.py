@@ -17,10 +17,10 @@ class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
-        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles]
+        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles, last_action]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 18),
-            high=np.array([np.inf] * 18),
+            low=np.array([-np.inf] * 27),
+            high=np.array([np.inf] * 27),
             dtype=np.float32
         )
         
@@ -106,7 +106,8 @@ class MavEnv(gym.Env):
         ])
         
         g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fan_speeds, nozzle_angles])
+        first_action = np.zeros(9)
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fan_speeds, nozzle_angles, first_action])
         info = {"state": self.state}
         return obs, info
     
@@ -212,7 +213,7 @@ class MavEnv(gym.Env):
             nozzle_setpoints
         ])
 
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fanspeeds, nozzleangles])    # TODO: add fanspeeds_setpoint and nozzles_setpoint
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fanspeeds, nozzleangles, action])
 
         # Reward Function
         lin_vel_penalty = np.linalg.norm(lin_vel)
@@ -321,9 +322,9 @@ def evaluate_model(model, env):
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    # train_MAV()
+    train_MAV()
     
-    model = PPO.load("data/ppo_mav_model")
-    env = MavEnv()
-    evaluate_model(model, env)
-    plt.show()
+    # model = PPO.load("data/ppo_mav_model")
+    # env = MavEnv()
+    # evaluate_model(model, env)
+    # plt.show()
