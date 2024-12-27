@@ -11,6 +11,7 @@ from Quaternion import quaternion_rotate_vector
 from Plots import plot_episode
 from torch.utils.tensorboard import SummaryWriter
 import copy
+import random
 
 # Gymnasium environment to train RL agent
 class MavEnv(gym.Env):
@@ -19,8 +20,8 @@ class MavEnv(gym.Env):
 
         # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles, last_action]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 27),
-            high=np.array([np.inf] * 27),
+            low=np.array([-np.inf] * 33),
+            high=np.array([np.inf] * 33),
             dtype=np.float32
         )
         
@@ -58,7 +59,8 @@ class MavEnv(gym.Env):
         self.k_omega_std = 0.213            # std deviation of k_omega
         self.omega_dot_max = 5.0            # TODO: What's omega_dot_max??? 750PWM/s = 0.833 for sure, but for sure even faster!
         self.step_counter = 0
-        self.dt = 0.01  # [s]
+        self.dt = 0.01                      # [s]
+        self.action_buffer = [np.zeros(9)]  # Buffer actions and apply them one timestep later
         
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -107,7 +109,15 @@ class MavEnv(gym.Env):
         
         g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
         first_action = np.zeros(9)
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fan_speeds, nozzle_angles, first_action])
+        r = random.random()
+        if r < 0.333:
+            self.action_buffer = [first_action]
+        elif r < 0.666:
+            self.action_buffer = [first_action, first_action]
+        else:
+            self.action_buffer = []
+        
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fan_speeds, np.sin(nozzle_angles), np.cos(nozzle_angles), first_action])
         info = {"state": self.state}
         return obs, info
     
@@ -166,6 +176,10 @@ class MavEnv(gym.Env):
         terminated = False
         truncated = False
 
+        # Buffer action and apply
+        self.action_buffer.append(action)
+        action = self.action_buffer.pop(0)
+
         # Extract current state
         position = self.state[0:3]
         orientation = R.from_quat(self.state[3:7])
@@ -213,7 +227,7 @@ class MavEnv(gym.Env):
             nozzle_setpoints
         ])
 
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fanspeeds, nozzleangles, action])
+        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fanspeeds, np.sin(nozzleangles), np.cos(nozzleangles), action])
 
         # Reward Function
         lin_vel_penalty = np.linalg.norm(lin_vel)
@@ -223,7 +237,7 @@ class MavEnv(gym.Env):
         fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
         nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         reward_info = {"lin_vel_penalty": lin_vel_penalty, "ang_vel_penalty": ang_vel_penalty, "action_penalty": action_penalty}
-        reward = - 0.01 * lin_vel_penalty - 0.001 * ang_vel_penalty
+        reward = - 0.1 * lin_vel_penalty - 0.01 * ang_vel_penalty
 
         # Terminate if velocity is going crazy or it rotates > 180°
         # if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5) or np.any(np.abs(orientation.as_euler('xyz', degrees=True) > 180))):
@@ -242,17 +256,18 @@ class MavEnv(gym.Env):
 
 def train_MAV():
 
+    # for i in range(8):
     env = MavEnv()
 
     # Uncomment to load model, not recommended
-    # model = PPO.load("data/ppo_mav_model", env=env)
-    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    model = PPO.load("data/ppo_mav_model", env=env)
+    # model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
     eval_callback = TensorboardCallback(env=env, eval_freq=200_000, evaluate_fct=evaluate_model, verbose=1)
 
     model.learn(total_timesteps=1_000_000, callback=eval_callback)
 
-    model.save("data/ppo_mav_model")
+    model.save("data/ppo_mav_model_2")
 
 class TensorboardCallback(BaseCallback):
     def __init__(self, env, eval_freq, evaluate_fct, verbose=0):
