@@ -70,8 +70,10 @@ class MavEnv(gym.Env):
 
         # Randomize parameters
         self.k_f = 0.00005749 + np.random.uniform(- 0.00000575, 0.00000575)    # +- 10%
-        self.k_phi_randomized = np.random.normal(6.45, self.k_phi_std)         # Uncertainty from SysID
-        self.k_omega_randomized = np.random.normal(12.253, self.k_omega_std)
+        self.phi_dot_max = np.random.uniform(1.0, 1.1)
+        self.omega_dot_max = np.random.uniform(4.9, 5.0)
+        self.k_phi_randomized = np.random.normal(6.45, 2 * self.k_phi_std)         # Uncertainty from SysID
+        self.k_omega_randomized = np.random.normal(12.253, 2 * self.k_omega_std)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -234,7 +236,7 @@ class MavEnv(gym.Env):
         fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
         nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         reward_info = {"lin_vel_penalty": lin_vel_penalty, "ang_vel_penalty": ang_vel_penalty, "action_penalty": action_penalty}
-        reward = - 0.1 * lin_vel_penalty - 0.01 * ang_vel_penalty - 0.0001 * action_penalty
+        reward = - 0.11 * lin_vel_penalty - 0.06 * ang_vel_penalty - 0.001 * fanspeed_penalty
         
         # Truncate episode after 500 timesteps
         self.step_counter += 1
