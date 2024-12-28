@@ -53,14 +53,16 @@ class MavEnv(gym.Env):
         # self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
         self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
         self.k_phi = 6.45                   # [Hz], First order nozzle angle model
+        self.k_phi_randomized = 6.45        # [Hz], First order nozzle angle model
         self.k_phi_std = 0.159              # std deviation
         self.phi_dot_max = 1                # [rad/s], DXL datasheet says max 103 rev/min
         self.k_omega = 12.253               # [Hz], First order fanspeed model
+        self.k_omega_randomized = 12.253    # [Hz], First order fanspeed model
         self.k_omega_std = 0.213            # std deviation of k_omega
         self.omega_dot_max = 5.0            # TODO: What's omega_dot_max??? 750PWM/s = 0.833 for sure, but for sure even faster!
         self.step_counter = 0
         self.dt = 0.01                      # [s]
-        self.action_buffer = [np.zeros(9)]  # Buffer actions and apply them one timestep later
+        # self.action_buffer = [np.zeros(9)]  # Buffer actions and apply them one timestep later
         
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -68,7 +70,8 @@ class MavEnv(gym.Env):
 
         # Randomize parameters
         self.k_f = 0.00005749 + np.random.uniform(- 0.00000575, 0.00000575)    # +- 10%
-
+        self.k_phi_randomized = np.random.normal(6.45, self.k_phi_std)         # Uncertainty from SysID
+        self.k_omega_randomized = np.random.normal(12.253, self.k_omega_std)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -110,12 +113,12 @@ class MavEnv(gym.Env):
         g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
         first_action = np.zeros(9)
         r = random.random()
-        if r < 0.333:
-            self.action_buffer = [first_action]
-        elif r < 0.666:
-            self.action_buffer = [first_action, first_action]
-        else:
-            self.action_buffer = []
+        # if r < 0.333:
+        #     self.action_buffer = [first_action]
+        # elif r < 0.666:
+        #     self.action_buffer = [first_action, first_action]
+        # else:
+        # self.action_buffer = []
         
         obs = np.concatenate([lin_vel, ang_vel, g_bodyframe, fan_speeds, np.sin(nozzle_angles), np.cos(nozzle_angles), first_action])
         info = {"state": self.state}
@@ -130,21 +133,16 @@ class MavEnv(gym.Env):
 
         nozzles_state = self.state[22:28]
         # Update setpoints and nozzle_angles [rad] according to first order model
-        # nozzles_setpoint = self.state[31:37]
-        # nozzles_setpoint += action[3:] / self.k_phi                           # TODO: Update setpoint without state information
-        nozzles_setpoint = nozzles_state + (action[3:] * self.phi_dot_max) / self.k_phi              # Setpoint update with actuator state information
+        nozzles_setpoint = nozzles_state + (action[3:] * self.phi_dot_max) / self.k_phi         # Setpoint update with actuator state information
         nozzles_setpoint = nozzles_setpoint.clip(-np.pi, np.pi)
-        nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)           # TODO: nozzle_dot = self.k_phi_randomized * (nozzles_setpoint - nozzle_state)
+        nozzles_dot = self.k_phi_randomized * (nozzles_setpoint - nozzles_state)                # Nominal k_phi used to set setpoint, k_phi_randomized used to simulate different MAV dynamics
         nozzles_state += nozzles_dot * self.dt
 
         fanspeeds_state = self.state[19:22]
-        # fanspeeds_setpoint = self.state[28:31]
         # Update setpoints and normalized fanspeeds according to first order model
-        # fanspeeds_setpoint += action[:3] / self.k_omega                       # TODO: Same as above
-        # fanspeeds_setpoint = action[:3]
         fanspeeds_setpoint = fanspeeds_state + (action[:3] * self.omega_dot_max) / self.k_omega
         fanspeeds_setpoint = fanspeeds_setpoint.clip(0, 1)
-        fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)   # TODO: Same as above
+        fanspeeds_dot = self.k_omega_randomized * (fanspeeds_setpoint - fanspeeds_state)        # Same as above
         fanspeeds_state += fanspeeds_dot * self.dt
         fanspeeds_state = fanspeeds_state.clip(0, 1)
 
@@ -153,7 +151,7 @@ class MavEnv(gym.Env):
     # Compute thrust vectors [N] of the 3 nozzles in body frame
     def compute_thrust_vectors(self, nozzleangles, fanspeeds):
         # thrust = k_f * (PWM - 1050)² * normal_vector
-        fanspeeds_pwm = 1050 + fanspeeds * 900                                  # Scale normalized fanspeeds \in [0, 1] to PWM signal \in [1050, 1950]
+        fanspeeds_pwm = 1050 + fanspeeds * 900                                                  # Scale normalized fanspeeds \in [0, 1] to PWM signal \in [1050, 1950]
         fanspeeds_squared = np.square(fanspeeds_pwm - 1050)[:, np.newaxis]
         thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzleangles)
         return thrust_vectors
@@ -176,9 +174,9 @@ class MavEnv(gym.Env):
         terminated = False
         truncated = False
 
-        # Buffer action and apply
-        self.action_buffer.append(action)
-        action = self.action_buffer.pop(0)
+        # # Buffer action and apply
+        # self.action_buffer.append(action)
+        # action = self.action_buffer.pop(0)
 
         # Extract current state
         position = self.state[0:3]
@@ -196,8 +194,8 @@ class MavEnv(gym.Env):
         force, torque = self.compute_forces_and_torques(thrust_vectors)
 
         # Update angular velocity and orientation
-        ang_acc = torque / self.inertia     # TODO np.cross(ang_vel, self.inertia @ angular_velocity), only for non-diagonal inertia tensor
-        ang_acc = ang_acc.clip(-800, 800)   # Clip to maximum realistic ang_acc
+        ang_acc = torque / self.inertia                                                         # TODO np.cross(ang_vel, self.inertia @ angular_velocity), only for non-diagonal inertia tensor
+        ang_acc = ang_acc.clip(-800, 800)                                                       # Clip to maximum realistic ang_acc
         ang_vel += ang_acc * self.dt
         orientation *= R.from_rotvec(ang_vel * self.dt)
 
@@ -207,7 +205,6 @@ class MavEnv(gym.Env):
         g_bodyframe = orientation.inv().apply(self.g)
         
         # Update linear velocity and position
-        # print(f"ang_vel: {ang_vel}, lin_vel: {lin_vel}, Coriolis term: {-np.cross(ang_vel, lin_vel)}, lin_acc: {force / self.mass + g_bodyframe - np.cross(ang_vel, lin_vel)}")
         lin_acc = force / self.mass + g_bodyframe - np.cross(ang_vel, lin_vel)
         lin_acc = lin_acc.clip(-40, 40)     # Clip to maximum realistic lin_acc
         lin_vel += lin_acc * self.dt
@@ -237,13 +234,9 @@ class MavEnv(gym.Env):
         fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
         nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         reward_info = {"lin_vel_penalty": lin_vel_penalty, "ang_vel_penalty": ang_vel_penalty, "action_penalty": action_penalty}
-        reward = - 0.1 * lin_vel_penalty - 0.01 * ang_vel_penalty
-
-        # Terminate if velocity is going crazy or it rotates > 180°
-        # if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5) or np.any(np.abs(orientation.as_euler('xyz', degrees=True) > 180))):
-        #     terminated = True
+        reward = - 0.1 * lin_vel_penalty - 0.01 * ang_vel_penalty - 0.0001 * action_penalty
         
-        # Truncate episode after 1000 timesteps
+        # Truncate episode after 500 timesteps
         self.step_counter += 1
         if (self.step_counter > 500):
             truncated = True
@@ -260,14 +253,14 @@ def train_MAV():
     env = MavEnv()
 
     # Uncomment to load model, not recommended
-    model = PPO.load("data/ppo_mav_model", env=env)
-    # model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    # model = PPO.load("data/ppo_mav_model", env=env)
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
     eval_callback = TensorboardCallback(env=env, eval_freq=200_000, evaluate_fct=evaluate_model, verbose=1)
 
-    model.learn(total_timesteps=1_000_000, callback=eval_callback)
+    model.learn(total_timesteps=1_500_000, callback=eval_callback)
 
-    model.save("data/ppo_mav_model_2")
+    model.save("data/ppo_mav_model")
 
 class TensorboardCallback(BaseCallback):
     def __init__(self, env, eval_freq, evaluate_fct, verbose=0):
