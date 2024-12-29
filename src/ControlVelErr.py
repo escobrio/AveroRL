@@ -60,10 +60,10 @@ class MavEnv(gym.Env):
         self.k_omega_randomized = 12.253    # [Hz], First order fanspeed model
         self.k_omega_std = 0.213            # std deviation of k_omega
         self.omega_dot_max = 5.0            # TODO: What's omega_dot_max??? 750PWM/s = 0.833 for sure, but for sure even faster!
-        self.lin_vel_ref = np.array([0, 0, 0]) # velocity_reference to follow. TODO: 3-D
+        self.lin_vel_ref = np.array([0, 0, 1]) # velocity_reference to follow. TODO: 3-D
         self.step_counter = 0
         self.dt = 0.01                      # [s]
-        self.action_buffer = [np.zeros(9)]  # Buffer actions and apply them one timestep later
+        self.last_action = np.zeros(9)      # Buffer actions and apply them one timestep later
         
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -75,7 +75,7 @@ class MavEnv(gym.Env):
         self.omega_dot_max = np.random.uniform(4.9, 5.0)
         self.k_phi_randomized = np.random.normal(6.45, 2 * self.k_phi_std)         # Uncertainty from SysID
         self.k_omega_randomized = np.random.normal(12.253, 2 * self.k_omega_std)
-        # self.lin_vel_ref[2] = np.random.uniform(0, 8)
+        self.lin_vel_ref[2] = np.random.uniform(-2, 2)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -93,7 +93,7 @@ class MavEnv(gym.Env):
         ang_acc = np.random.uniform(low=-2.0, high=2.0, size=3)
 
         # Randomize actuators
-        fan_speeds = np.random.uniform(low=0.5, high=0.7, size=3)
+        fan_speeds = np.random.uniform(low=0.0, high=0.2, size=3)
         # fan_speeds = np.array([0.61, 0.61, 0.61])
         nozzle_angles = np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]) + np.random.uniform(low=-0.1, high=0.1, size=6) 
         fanspeeds_setpoints = np.random.uniform(low=0.5, high=0.7, size=3)
@@ -116,17 +116,8 @@ class MavEnv(gym.Env):
         
         g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
         first_action = np.zeros(9)
-        r = random.random()
-        if r < 0.2:
-            self.action_buffer = [first_action]
-        elif r < 0.4:
-            self.action_buffer = [first_action, first_action]
-        elif r < 0.6:
-            self.action_buffer = [first_action, first_action, first_action]
-        elif r < 0.8:
-            self.action_buffer = [first_action, first_action, first_action, first_action]
-        elif r < 1.0:
-            self.action_buffer = [first_action, first_action, first_action, first_action, first_action]
+        # r = random.random()
+        self.last_action = first_action
         
         lin_vel_err = lin_vel - self.lin_vel_ref
 
@@ -184,8 +175,8 @@ class MavEnv(gym.Env):
         truncated = False
 
         # Buffer action and apply
-        self.action_buffer.append(action)
-        action = self.action_buffer.pop(0)
+        # self.action_buffer.append(action)
+        # action = self.action_buffer.pop(0)
 
         # Extract current state
         position = self.state[0:3]
@@ -244,13 +235,16 @@ class MavEnv(gym.Env):
         orientation_penalty = np.linalg.norm(orientation.as_euler('xyz', degrees=True))
         fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
         nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
-        reward_info = {"lin_vel_penalty": lin_vel_error, "ang_vel_penalty": ang_vel_penalty, "action_penalty": action_penalty}
-        reward = - 0.11 * lin_vel_error - 0.01 * ang_vel_penalty - 0.001 * fanspeed_penalty
+        setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
+        reward_info = {"lin_vel_penalty": - 0.11 * lin_vel_error, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.001 * action_penalty}
+        reward = - 0.11 * lin_vel_error - 0.01 * ang_vel_penalty - 0.001 * setpoint_diff_penalty
         
         # Truncate episode after 500 timesteps
         self.step_counter += 1
         if (self.step_counter > 500):
             truncated = True
+
+        self.last_action = action
 
         info = {"state": self.state, "reward": reward_info}
         
