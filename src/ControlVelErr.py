@@ -26,11 +26,11 @@ class MavEnv(gym.Env):
         )
         
         # Actions space: 
-        # [fanspeed1_setpoint_dot, fanspeed2_setpoint_dot, fanspeed3_setpoint_dot, #[PWM/s]
-        # nozzleangle1_setpoint_dot, nozzleangle2_setpoint_dot, nozzleangle3_setpoint_dot, nozzleangle4_setpoint_dot, nozzleangle5_setpoint_dot, nozzleangle6_setpoint_dot #[rad/s]]
+        # [fanspeed1_setpoint, fanspeed2_setpoint, fanspeed3_setpoint, #[PWM/s]
+        # nozzleangle1_setpoint, nozzleangle2_setpoint, nozzleangle3_setpoint, nozzleangle4_setpoint, nozzleangle5_setpoint, nozzleangle6_setpoint #[rad/s]]
         self.action_space = gym.spaces.Box(
-            low=np.array([-1, -1, -1, -1, -1, -1, -1, -1, -1]),
-            high=np.array([1, 1, 1, 1, 1, 1, 1, 1, 1]),
+            low=np.array([0, 0, 0, -np.pi, -np.pi, -np.pi, -np.pi, -np.pi, -np.pi]),
+            high=np.array([1, 1, 1, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi]),
             dtype=np.float32
         )
 
@@ -60,10 +60,10 @@ class MavEnv(gym.Env):
         self.k_omega_randomized = 12.253    # [Hz], First order fanspeed model
         self.k_omega_std = 0.213            # std deviation of k_omega
         self.omega_dot_max = 5.0            # TODO: What's omega_dot_max??? 750PWM/s = 0.833 for sure, but for sure even faster!
-        self.lin_vel_ref = np.array([0, 0, 1]) # velocity_reference to follow. TODO: 3-D
+        self.lin_vel_ref = np.array([0, 0, 0]) # velocity_reference to follow. TODO: 3-D
         self.step_counter = 0
         self.dt = 0.01                      # [s]
-        # self.action_buffer = [np.zeros(9)]  # Buffer actions and apply them one timestep later
+        self.action_buffer = [np.zeros(9)]  # Buffer actions and apply them one timestep later
         
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -75,7 +75,7 @@ class MavEnv(gym.Env):
         self.omega_dot_max = np.random.uniform(4.9, 5.0)
         self.k_phi_randomized = np.random.normal(6.45, 2 * self.k_phi_std)         # Uncertainty from SysID
         self.k_omega_randomized = np.random.normal(12.253, 2 * self.k_omega_std)
-        self.lin_vel_ref[2] = np.random.uniform(0, 8)
+        # self.lin_vel_ref[2] = np.random.uniform(0, 8)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -117,12 +117,16 @@ class MavEnv(gym.Env):
         g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
         first_action = np.zeros(9)
         r = random.random()
-        # if r < 0.333:
-        #     self.action_buffer = [first_action]
-        # elif r < 0.666:
-        #     self.action_buffer = [first_action, first_action]
-        # else:
-        # self.action_buffer = []
+        if r < 0.2:
+            self.action_buffer = [first_action]
+        elif r < 0.4:
+            self.action_buffer = [first_action, first_action]
+        elif r < 0.6:
+            self.action_buffer = [first_action, first_action, first_action]
+        elif r < 0.8:
+            self.action_buffer = [first_action, first_action, first_action, first_action]
+        elif r < 1.0:
+            self.action_buffer = [first_action, first_action, first_action, first_action, first_action]
         
         lin_vel_err = lin_vel - self.lin_vel_ref
 
@@ -137,17 +141,16 @@ class MavEnv(gym.Env):
     # action is change in actuator setpoint
     def first_order_actuator_models(self, action):
 
-        nozzles_state = self.state[22:28]
         # Update setpoints and nozzle_angles [rad] according to first order model
-        nozzles_setpoint = nozzles_state + (action[3:] * self.phi_dot_max) / self.k_phi         # Setpoint update with actuator state information
-        nozzles_setpoint = nozzles_setpoint.clip(-np.pi, np.pi)
+        nozzles_setpoint = action[3:]                                                           # Setpoint update with actuator state information
+        nozzles_state = self.state[22:28]
         nozzles_dot = self.k_phi_randomized * (nozzles_setpoint - nozzles_state)                # Nominal k_phi used to set setpoint, k_phi_randomized used to simulate different MAV dynamics
         nozzles_state += nozzles_dot * self.dt
+        nozzles_state = nozzles_state.clip(-np.pi, np.pi)
 
-        fanspeeds_state = self.state[19:22]
         # Update setpoints and normalized fanspeeds according to first order model
-        fanspeeds_setpoint = fanspeeds_state + (action[:3] * self.omega_dot_max) / self.k_omega
-        fanspeeds_setpoint = fanspeeds_setpoint.clip(0, 1)
+        fanspeeds_setpoint = action[:3]
+        fanspeeds_state = self.state[19:22]
         fanspeeds_dot = self.k_omega_randomized * (fanspeeds_setpoint - fanspeeds_state)        # Same as above
         fanspeeds_state += fanspeeds_dot * self.dt
         fanspeeds_state = fanspeeds_state.clip(0, 1)
@@ -180,9 +183,9 @@ class MavEnv(gym.Env):
         terminated = False
         truncated = False
 
-        # # Buffer action and apply
-        # self.action_buffer.append(action)
-        # action = self.action_buffer.pop(0)
+        # Buffer action and apply
+        self.action_buffer.append(action)
+        action = self.action_buffer.pop(0)
 
         # Extract current state
         position = self.state[0:3]

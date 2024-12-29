@@ -1,0 +1,10 @@
+#!/bin/bash
+
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=1:00:00
+#SBATCH --mem-per-cpu=1024
+
+module load stack python
+source $HOME/venv/bin/activate
+python src/ControlVelErr.py
