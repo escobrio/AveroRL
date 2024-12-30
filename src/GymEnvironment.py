@@ -206,11 +206,11 @@ def train_MAV():
 
     env = MavEnv()
 
-    model = PPO.load("data/ppo_mav_model", env=env)
+    # model = PPO.load("data/ppo_mav_model", env=env)
     # Uncomment for new model
-    # model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    model.learn(total_timesteps=50_000)
+    model.learn(total_timesteps=500_000)
 
     model.save("data/ppo_mav_model")
 
@@ -257,6 +257,6 @@ def evaluate_model():
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    # train_MAV()
+    train_MAV()
     evaluate_model()
     
