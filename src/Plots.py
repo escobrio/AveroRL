@@ -18,6 +18,11 @@ def plot_episode(observations, infos, actions, rewards):
     lin_vel_penalty = np.array([info.get('reward', {}).get('lin_vel_penalty', 0) for info in infos])
     ang_vel_penalty = np.array([info.get('reward', {}).get('ang_vel_penalty', 0) for info in infos])
     setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
+    vel_ref = np.array([info.get('vel_ref', np.array([0, 0, 0])) for info in infos])
+
+    k_f = infos[0]["k_f"]
+    k_omega = infos[0]["k_omega"]
+    k_phi = infos[0]["k_phi"]
 
     palette = plt.cm.Set1.colors
     # red, green, blue for x, y, z
@@ -60,14 +65,17 @@ def plot_episode(observations, infos, actions, rewards):
     axs[1,0].set_title("Linear Velocity in bodyframe", loc='center', y=0.85)
     axs[1,0].set_ylabel("[m/s]")
     axs[1,0].set_xlabel("timesteps")
+    axs[1,0].axhline(0, color='black', alpha=0.2)
     axs[1,0].plot(states[:, 7], color=colors[0], label=f"lin_vel_x", alpha=0.3)
     axs[1,0].plot(states[:, 8], color=colors[1], label=f"lin_vel_y", alpha=0.3)
     axs[1,0].plot(states[:, 9], color=colors[2], label=f"lin_vel_z", alpha=0.3)
     axs[1,0].plot(states[:, 7], '.', markersize=1, color=colors[0])
     axs[1,0].plot(states[:, 8], '.', markersize=1, color=colors[1])
     axs[1,0].plot(states[:, 9], '.', markersize=1, color=colors[2])
+    axs[1,0].plot(vel_ref[:, 0], color=colors[0], label=f"lin_vel_x_ref", alpha=0.3)
+    axs[1,0].plot(vel_ref[:, 1], color=colors[1], label=f"lin_vel_y_ref", alpha=0.3)
+    axs[1,0].plot(vel_ref[:, 2], color=colors[2], label=f"lin_vel_z_ref", alpha=0.3)
     axs[1,0].grid(True, alpha=0.3)
-    axs[1,0].axhline(0, color='black', alpha=0.2)
     axs[1,0].legend(loc='center right')
 
 
@@ -138,7 +146,7 @@ def plot_episode(observations, infos, actions, rewards):
     gs2 = fig2.add_gridspec(2, 2, hspace=0)
     axs2 = gs2.subplots(sharex=True)
 
-    axs2[0,0].set_title("Fanspeeds", loc='center', y=0.91)
+    axs2[0,0].set_title(fr"$Fanspeeds, k_\omega = {{{k_omega:.1f}}}Hz, k_f = {{{k_f:.2e}}} [N/PWM²]$", loc='center', y=0.91)
     axs2[0,0].set_ylabel("[0, 1]")
     axs2[0,0].set_xlabel("timesteps")
     # axs2[0,0].set_ylim(1050, 1950)
@@ -162,7 +170,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[1,0].axhline(0, color='black', alpha=0.2)
     axs2[1,0].legend(loc='center right')
 
-    axs2[0,1].set_title("Nozzle angles", loc='center', y=0.92)
+    axs2[0,1].set_title(fr"$Nozzle angles, k_\varphi = {{{k_phi:.1f}}} [Hz]$", loc='center', y=0.92)
     axs2[0,1].set_ylabel("[°]")
     axs2[0,1].set_xlabel("timesteps")
     # axs2[0,1].set_yticks(np.arange(-360, 360, 30))
