@@ -15,14 +15,18 @@ def plot_episode(observations, infos, actions, rewards):
                                                             # [16:19] angular acc [rad/s²]  
                                                             # [19:22] fan speeds [PWM]
                                                             # [22:28] nozzle angles [rad]
-    lin_vel_penalty = np.array([info.get('reward', {}).get('lin_vel_penalty', 0) for info in infos])
-    ang_vel_penalty = np.array([info.get('reward', {}).get('ang_vel_penalty', 0) for info in infos])
-    setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
-    vel_ref = np.array([info.get('vel_ref', np.array([0, 0, 0])) for info in infos])
+    # lin_vel_penalty = np.array([info.get('reward', {}).get('lin_vel_penalty', 0) for info in infos])
+    # ang_vel_penalty = np.array([info.get('reward', {}).get('ang_vel_penalty', 0) for info in infos])
+    # setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
+    # vel_ref = np.array([info.get('vel_ref', np.array([0, 0, 0])) for info in infos])
 
-    k_f = infos[0]["k_f"]
-    k_omega = infos[0]["k_omega"]
-    k_phi = infos[0]["k_phi"]
+    # k_f = infos[0]["k_f"]
+    # k_omega = infos[0]["k_omega"]
+    # k_phi = infos[0]["k_phi"]
+    k_f = 0.00005749
+    k_omega = 12
+    k_phi = 6
+
 
     palette = plt.cm.Set1.colors
     # red, green, blue for x, y, z
@@ -72,9 +76,9 @@ def plot_episode(observations, infos, actions, rewards):
     axs[1,0].plot(states[:, 7], '.', markersize=1, color=colors[0])
     axs[1,0].plot(states[:, 8], '.', markersize=1, color=colors[1])
     axs[1,0].plot(states[:, 9], '.', markersize=1, color=colors[2])
-    axs[1,0].plot(vel_ref[:, 0], color=colors[0], label=f"lin_vel_x_ref", alpha=0.3)
-    axs[1,0].plot(vel_ref[:, 1], color=colors[1], label=f"lin_vel_y_ref", alpha=0.3)
-    axs[1,0].plot(vel_ref[:, 2], color=colors[2], label=f"lin_vel_z_ref", alpha=0.3)
+    # axs[1,0].plot(vel_ref[:, 0], color=colors[0], label=f"lin_vel_x_ref", alpha=0.3)
+    # axs[1,0].plot(vel_ref[:, 1], color=colors[1], label=f"lin_vel_y_ref", alpha=0.3)
+    # axs[1,0].plot(vel_ref[:, 2], color=colors[2], label=f"lin_vel_z_ref", alpha=0.3)
     axs[1,0].grid(True, alpha=0.3)
     axs[1,0].legend(loc='center right')
 
@@ -121,9 +125,9 @@ def plot_episode(observations, infos, actions, rewards):
     axs[3,0].set_title("Reward", loc='center', y=0.85)
     axs[3,0].set_xlabel("timesteps")
     axs[2,0].axhline(0, color='black', alpha=0.2)
-    axs[3,0].plot(lin_vel_penalty, label="lin_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
-    axs[3,0].plot(ang_vel_penalty, label="ang_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
-    axs[3,0].plot(setpoint_diff_penalty, label="setpoint_diff_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
+    # axs[3,0].plot(lin_vel_penalty, label="lin_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
+    # axs[3,0].plot(ang_vel_penalty, label="ang_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
+    # axs[3,0].plot(setpoint_diff_penalty, label="setpoint_diff_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
     axs[3,0].plot(rewards, label="Total Reward", marker='.', linestyle='', markersize=3)
     axs[3,0].grid(True, alpha=0.3)
     axs[3,0].legend(loc='center right')
