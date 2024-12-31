@@ -108,15 +108,15 @@ class MavEnv(gym.Env):
     def first_order_actuator_models(self, action):
         # Update nozzle angle [rad] according to first order model of error = setpoint - state
         nozzles_setpoint = action[3:]
-        nozzles_state = self.state[22:28]
-        nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
-        nozzles_state += nozzles_dot * self.dt
+        nozzles_state = nozzles_setpoint
+        # nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
+        # nozzles_state += nozzles_dot * self.dt
 
         # Update fan speed [PWM] according to first order model of error = setpoint - state
         fanspeeds_setpoint = action[:3]
-        fanspeeds_state = self.state[19:22]
-        fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
-        fanspeeds_state += fanspeeds_dot * self.dt
+        fanspeeds_state = fanspeeds_setpoint
+        # fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
+        # fanspeeds_state += fanspeeds_dot * self.dt
 
         return nozzles_state, nozzles_setpoint, fanspeeds_state, fanspeeds_setpoint
 
