@@ -129,15 +129,16 @@ class MavEnv(gym.Env):
         thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzles_angles)
         return thrust_vectors
     
-    def compute_forces_and_torques(self, thrust_vectors):
+    def compute_forces_and_torques(self, thrust_vectors, nozzle_angles):
         """Compute net force and torque from thrust vectors."""
         # Net force is sum of all thrust vectors
         force = np.sum(thrust_vectors, axis=0)
-        
+
+        # Compute distance vector r from Body frame to Endeffector of the Nozzle, where thrust is applied
+        r_BE_1, r_BE_2, r_BE_3 = r_BE(nozzle_angles)
+
         # Compute torques from each thrust
         torque = np.zeros(3)
-        action_phi = np.zeros(6) # TODO use actual phi commands
-        r_BE_1, r_BE_2, r_BE_3 = r_BE(action_phi)
         torque += np.cross(r_BE_1, thrust_vectors[0])
         torque += np.cross(r_BE_2, thrust_vectors[1])
         torque += np.cross(r_BE_3, thrust_vectors[2])
@@ -155,13 +156,13 @@ class MavEnv(gym.Env):
         ang_vel = self.state[10:13]
 
         # Update actuators
-        nozzles_angles, nozzle_setpoints, fanspeeds, fanspeeds_setpoints = self.first_order_actuator_models(action)
+        nozzle_angles, nozzle_setpoints, fanspeeds, fanspeeds_setpoints = self.first_order_actuator_models(action)
 
         # Compute thrust vectors from actuator states [bodyframe]
-        thrust_vectors = self.compute_thrust_vectors(nozzles_angles, fanspeeds)
+        thrust_vectors = self.compute_thrust_vectors(nozzle_angles, fanspeeds)
         
         # Compute net force and torque [bodyframe]
-        force, torque = self.compute_forces_and_torques(thrust_vectors)
+        force, torque = self.compute_forces_and_torques(thrust_vectors, nozzle_angles)
 
         # Update angular velocity and orientation
         ang_acc = torque / self.inertia # TODO np.cross(ang_vel, self.inertia @ angular_velocity)
@@ -187,7 +188,7 @@ class MavEnv(gym.Env):
             lin_acc,
             ang_acc,
             fanspeeds,
-            nozzles_angles,
+            nozzle_angles,
             fanspeeds_setpoints,
             nozzle_setpoints
         ])
@@ -217,7 +218,6 @@ class MavEnv(gym.Env):
 
 def train_MAV():
 
-    # for i in range(8):
     env = MavEnv()
 
     # Uncomment to load model, not recommended
