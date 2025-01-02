@@ -20,13 +20,9 @@ def plot_episode(observations, infos, actions, rewards):
     setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
     # vel_ref = np.array([info.get('vel_ref', np.array([0, 0, 0])) for info in infos])
 
-    # k_f = infos[0]["k_f"]
-    # k_omega = infos[0]["k_omega"]
-    # k_phi = infos[0]["k_phi"]
-    k_f = 0.00005749
-    k_omega = 12
-    k_phi = 6
-
+    k_f = infos[0]["k_f"]
+    k_omega = infos[0]["k_omega"]
+    k_phi = infos[0]["k_phi"]
 
     palette = plt.cm.Set1.colors
     # red, green, blue for x, y, z

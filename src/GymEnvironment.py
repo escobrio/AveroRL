@@ -61,6 +61,9 @@ class MavEnv(gym.Env):
         super().reset(seed=seed)
         self.step_counter = 0
         self.episode_length = np.random.uniform(low=500, high=1000)
+        self.k_f = np.random.normal(0.00005749, 0.00001)                # std dev is 17%
+        self.k_phi = np.random.uniform(low=6, high=100)
+        self.k_omega = np.random.uniform(low=12, high=100)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -100,7 +103,7 @@ class MavEnv(gym.Env):
         
         g_bodyframe = quaternion_rotate_vector(orientation, self.g)
         obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
-        info = {"state": self.state}
+        info = {"state": self.state, "k_f": self.k_f, "k_omega": self.k_omega, "k_phi": self.k_phi}
         return obs, info
     
     # First order actuator models, k[Hz] = 1 / tau [s]
@@ -111,14 +114,14 @@ class MavEnv(gym.Env):
         # Update nozzle angle [rad] according to first order model of error = setpoint - state
         nozzles_setpoint = action[3:]
         nozzles_state = nozzles_setpoint
-        # nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
-        # nozzles_state += nozzles_dot * self.dt
+        nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
+        nozzles_state += nozzles_dot * self.dt
 
         # Update fan speed [PWM] according to first order model of error = setpoint - state
         fanspeeds_setpoint = action[:3]
         fanspeeds_state = fanspeeds_setpoint
-        # fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
-        # fanspeeds_state += fanspeeds_dot * self.dt
+        fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
+        fanspeeds_state += fanspeeds_dot * self.dt
 
         return nozzles_state, nozzles_setpoint, fanspeeds_state, fanspeeds_setpoint
 
@@ -206,12 +209,7 @@ class MavEnv(gym.Env):
         # nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         # setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
         # turn_penalty = 0
-        # reward = - 0.12 * lin_vel_error - 0.01 * ang_vel_penalty - 0.001 * setpoint_diff_penalty
-        reward = - 0.12 * lin_vel_error - 0.1 * ang_vel_penalty - 0.0 * action_penalty
-        # # Didn't work:
-        # if(np.any(np.abs(orientation.as_euler('xyz', degrees=True))[:2] > 45)):
-        #     turn_penalty = 5 
-        #     reward -= turn_penalty
+        reward = - 0.12 * lin_vel_error - 0.1 * ang_vel_penalty
         reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_error, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.001 * action_penalty}
         
         # Check if truncated
@@ -220,7 +218,7 @@ class MavEnv(gym.Env):
             truncated = True
 
         # # Terminate if velocity is going crazy
-        if (np.any(np.abs(lin_vel) > 1000) or np.any(np.abs(ang_vel) > 100000)):
+        if (np.any(np.abs(lin_vel) > 100) or np.any(np.abs(ang_vel) > 100)):
             reward = - (self.episode_length - self.step_counter)
             terminated = True
 
@@ -240,7 +238,7 @@ def train_MAV():
 
     eval_callback = TensorboardCallback(env=env, eval_freq=100_000, evaluate_fct=evaluate_model, verbose=1)
 
-    model.learn(total_timesteps=1_000_000, callback=eval_callback)
+    model.learn(total_timesteps=700_000, callback=eval_callback)
 
     model.save("data/ppo_mav_model")
 
