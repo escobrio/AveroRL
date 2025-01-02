@@ -15,9 +15,9 @@ def plot_episode(observations, infos, actions, rewards):
                                                             # [16:19] angular acc [rad/s²]  
                                                             # [19:22] fan speeds [PWM]
                                                             # [22:28] nozzle angles [rad]
-    # lin_vel_penalty = np.array([info.get('reward', {}).get('lin_vel_penalty', 0) for info in infos])
-    # ang_vel_penalty = np.array([info.get('reward', {}).get('ang_vel_penalty', 0) for info in infos])
-    # setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
+    lin_vel_penalty = np.array([info.get('reward', {}).get('lin_vel_penalty', 0) for info in infos])
+    ang_vel_penalty = np.array([info.get('reward', {}).get('ang_vel_penalty', 0) for info in infos])
+    setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
     # vel_ref = np.array([info.get('vel_ref', np.array([0, 0, 0])) for info in infos])
 
     # k_f = infos[0]["k_f"]
@@ -125,9 +125,9 @@ def plot_episode(observations, infos, actions, rewards):
     axs[3,0].set_title("Reward", loc='center', y=0.85)
     axs[3,0].set_xlabel("timesteps")
     axs[2,0].axhline(0, color='black', alpha=0.2)
-    # axs[3,0].plot(lin_vel_penalty, label="lin_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
-    # axs[3,0].plot(ang_vel_penalty, label="ang_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
-    # axs[3,0].plot(setpoint_diff_penalty, label="setpoint_diff_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
+    axs[3,0].plot(lin_vel_penalty, label="lin_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
+    axs[3,0].plot(ang_vel_penalty, label="ang_vel_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
+    axs[3,0].plot(setpoint_diff_penalty, label="setpoint_diff_penalty", marker='.', linestyle='', markersize=3, alpha=0.3)
     axs[3,0].plot(rewards, label="Total Reward", marker='.', linestyle='', markersize=3)
     axs[3,0].grid(True, alpha=0.3)
     axs[3,0].legend(loc='center right')

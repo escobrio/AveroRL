@@ -54,11 +54,13 @@ class MavEnv(gym.Env):
         self.k_phi = 6                      # [Hz], First order nozzle angle model, 1/tau where tau is time constant
         self.k_omega = 12                   # [Hz], First order fan speed model TODO this is actually k_forceomega
         self.step_counter = 0
+        self.episode_length = 500
         self.dt = 0.01  # [s]
         
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
+        self.episode_length = np.random.uniform(low=500, high=1000)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -175,7 +177,7 @@ class MavEnv(gym.Env):
         g_bodyframe = orientation.inv().apply(self.g)
         
         # Update linear velocity and position
-        lin_acc = force / self.mass + g_bodyframe # TODO NE eqt. np.cross(ang_vel, lin_vel)
+        lin_acc = force / self.mass + g_bodyframe - np.cross(ang_vel, lin_vel) # With Coriolis force
         lin_vel += lin_acc * self.dt
         position += orientation.apply(lin_vel) * self.dt
         
@@ -195,22 +197,34 @@ class MavEnv(gym.Env):
 
         obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
 
-        # Terminate if velocity is going crazy
-        if (np.any(np.abs(lin_vel) > 5) or np.any(np.abs(ang_vel) > 5)):
-            terminated = True
-
-        # Compute reward
-        velocity_penalty = np.linalg.norm(lin_vel) + np.linalg.norm(ang_vel)
-        
-        # Gets 1 reward for every flying frame
-        reward = 1 - 0.1 * velocity_penalty - 0.01 * np.linalg.norm(action)
+        # Reward Function
+        lin_vel_error = np.linalg.norm(lin_vel)
+        ang_vel_penalty = np.linalg.norm(ang_vel)
+        action_penalty = np.linalg.norm(action)
+        # orientation_penalty = np.linalg.norm(orientation.as_euler('xyz', degrees=True))
+        # fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
+        # nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
+        # setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
+        # turn_penalty = 0
+        # reward = - 0.12 * lin_vel_error - 0.01 * ang_vel_penalty - 0.001 * setpoint_diff_penalty
+        reward = - 0.12 * lin_vel_error - 0.1 * ang_vel_penalty - 0.0 * action_penalty
+        # # Didn't work:
+        # if(np.any(np.abs(orientation.as_euler('xyz', degrees=True))[:2] > 45)):
+        #     turn_penalty = 5 
+        #     reward -= turn_penalty
+        reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_error, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.001 * action_penalty}
         
         # Check if truncated
         self.step_counter += 1
-        if (self.step_counter > 1_000):
+        if (self.step_counter > self.episode_length):
             truncated = True
 
-        info = {"state": self.state}
+        # # Terminate if velocity is going crazy
+        if (np.any(np.abs(lin_vel) > 1000) or np.any(np.abs(ang_vel) > 100000)):
+            reward = - (self.episode_length - self.step_counter)
+            terminated = True
+
+        info = {"state": self.state, "reward": reward_info}
         
         return obs, reward, terminated, truncated, info
     
@@ -224,9 +238,9 @@ def train_MAV():
     # model = PPO.load("data/ppo_mav_model", env=env)
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    eval_callback = TensorboardCallback(env=env, eval_freq=62_500, evaluate_fct=evaluate_model, verbose=1)
+    eval_callback = TensorboardCallback(env=env, eval_freq=100_000, evaluate_fct=evaluate_model, verbose=1)
 
-    model.learn(total_timesteps=500_000, callback=eval_callback)
+    model.learn(total_timesteps=1_000_000, callback=eval_callback)
 
     model.save("data/ppo_mav_model")
 
