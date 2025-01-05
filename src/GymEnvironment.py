@@ -18,10 +18,10 @@ class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
-        # Observation space: [lin_vel, ang_vel, gravity vector in body frame]
+        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, last_action]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 9),
-            high=np.array([np.inf] * 9),
+            low=np.array([-np.inf] * 18),
+            high=np.array([np.inf] * 18),
             dtype=np.float32
         )
         
@@ -106,7 +106,8 @@ class MavEnv(gym.Env):
         g_bodyframe = quaternion_rotate_vector(orientation, self.g)
         lin_vel_err = lin_vel - self.vel_ref[:3]
         ang_vel_err = ang_vel - self.vel_ref[3:]
-        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe])
+        last_action = np.zeros(9)
+        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, last_action])
         info = {"state": self.state, "k_f": self.k_f, "k_omega": self.k_omega, "k_phi": self.k_phi}
         return obs, info
     
@@ -117,13 +118,13 @@ class MavEnv(gym.Env):
     def first_order_actuator_models(self, action):
         # Update nozzle angle [rad] according to first order model of error = setpoint - state
         nozzles_setpoint = action[3:]
-        nozzles_state = nozzles_setpoint
+        nozzles_state = self.state[22:28]
         nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
         nozzles_state += nozzles_dot * self.dt
 
         # Update fan speed [PWM] according to first order model of error = setpoint - state
         fanspeeds_setpoint = action[:3]
-        fanspeeds_state = fanspeeds_setpoint
+        fanspeeds_state = self.state[19:22]
         fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
         fanspeeds_state += fanspeeds_dot * self.dt
 
@@ -217,7 +218,7 @@ class MavEnv(gym.Env):
         reward = - 0.12 * lin_vel_penalty - 0.0 * ang_vel_penalty
         reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_penalty, "ang_vel_penalty": - 0.0 * ang_vel_penalty, "setpoint_diff_penalty": - 0.0 * action_penalty}
         
-        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe])
+        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, action])
 
         # Check if truncated
         self.step_counter += 1
@@ -241,7 +242,7 @@ def train_MAV():
 
     # Uncomment to load model, not recommended
     # model = PPO.load("data/ppo_mav_model", env=env)
-    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    model = PPO("MlpPolicy", env, verbose=1, n_steps=8192, tensorboard_log="./logs/ppo_mav/")
 
     eval_callback = TensorboardCallback(env=env, eval_freq=100_000, evaluate_fct=evaluate_model, verbose=1)
 
@@ -255,6 +256,8 @@ class TensorboardCallback(BaseCallback):
         self.eval_env = env
         self.eval_freq = eval_freq
         self.evaluate_fct = evaluate_fct
+        self.save_path = "./logs/ppo_mav/"
+        self.best_reward = -float("inf")  # Initialize with a very low value
 
     def _on_training_start(self):
         writer = SummaryWriter(log_dir=self.logger.dir)
@@ -265,6 +268,7 @@ class TensorboardCallback(BaseCallback):
         writer.close()
 
     def _on_step(self) -> bool:
+        # Evaluate model and plot on tensorboard
         if self.n_calls % self.eval_freq == 0:
             if self.verbose > 0:
                 print(f"\nEvaluating at step {self.n_calls}...")
@@ -273,7 +277,19 @@ class TensorboardCallback(BaseCallback):
             self.logger.record("plots/fig1", Figure(fig1, close=True), exclude=("stdout", "log", "json", "csv"))
             self.logger.record("plots/fig2", Figure(fig2, close=True), exclude=("stdout", "log", "json", "csv"))
             plt.close('all')
-        return True    
+        return True
+    
+    def _on_rollout_end(self) -> None:
+        # Evaluate the current rollout reward
+        rollout_rewards = self.locals["rollout_buffer"].rewards
+        mean_reward = np.mean(rollout_rewards)
+        print(f"mean_reward: {mean_reward}, len: {len(rollout_rewards)}")
+        if mean_reward > self.best_reward:
+            self.best_reward = mean_reward
+            if self.verbose > 0:
+                print(f"New best reward: {self.best_reward:.2f}, saving model to {self.save_path}")
+            # Save the best model
+            self.model.save(f"{self.save_path}ppo_mav_{mean_reward:.3f}")
 
 def evaluate_model(model, env):
 
