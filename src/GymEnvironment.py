@@ -53,6 +53,7 @@ class MavEnv(gym.Env):
         self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
         self.k_phi = 6                      # [Hz], First order nozzle angle model, 1/tau where tau is time constant
         self.k_omega = 12                   # [Hz], First order fan speed model TODO this is actually k_forceomega
+        self.vel_ref = np.array([0, 0, 0, 0, 0, 0])
         self.step_counter = 0
         self.episode_length = 500
         self.dt = 0.01  # [s]
@@ -62,8 +63,9 @@ class MavEnv(gym.Env):
         self.step_counter = 0
         self.episode_length = np.random.uniform(low=500, high=1000)
         self.k_f = np.random.normal(0.00005749, 0.00001)                # std dev is 17%
-        self.k_phi = np.random.uniform(low=6, high=100)
-        self.k_omega = np.random.uniform(low=12, high=100)
+        self.k_phi = np.random.normal(5, 1)
+        self.k_omega = np.random.normal(11, 1)
+        self.vel_ref = np.random.uniform(low=-1, high=1, size=6)
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -102,7 +104,9 @@ class MavEnv(gym.Env):
         ])
         
         g_bodyframe = quaternion_rotate_vector(orientation, self.g)
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
+        lin_vel_err = lin_vel - self.vel_ref[:3]
+        ang_vel_err = ang_vel - self.vel_ref[3:]
+        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe])
         info = {"state": self.state, "k_f": self.k_f, "k_omega": self.k_omega, "k_phi": self.k_phi}
         return obs, info
     
@@ -198,20 +202,23 @@ class MavEnv(gym.Env):
             nozzle_setpoints
         ])
 
-        obs = np.concatenate([lin_vel, ang_vel, g_bodyframe])
 
         # Reward Function
-        lin_vel_error = np.linalg.norm(lin_vel)
-        ang_vel_penalty = np.linalg.norm(ang_vel)
+        lin_vel_err = lin_vel - self.vel_ref[:3]
+        lin_vel_penalty = np.linalg.norm(lin_vel_err)
+        ang_vel_err = ang_vel - self.vel_ref[3:]
+        ang_vel_penalty = np.linalg.norm(ang_vel_err)
         action_penalty = np.linalg.norm(action)
         # orientation_penalty = np.linalg.norm(orientation.as_euler('xyz', degrees=True))
         # fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
         # nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         # setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
         # turn_penalty = 0
-        reward = - 0.12 * lin_vel_error - 0.1 * ang_vel_penalty
-        reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_error, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.001 * action_penalty}
+        reward = - 0.12 * lin_vel_penalty - 0.0 * ang_vel_penalty
+        reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_penalty, "ang_vel_penalty": - 0.0 * ang_vel_penalty, "setpoint_diff_penalty": - 0.0 * action_penalty}
         
+        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe])
+
         # Check if truncated
         self.step_counter += 1
         if (self.step_counter > self.episode_length):
@@ -222,7 +229,7 @@ class MavEnv(gym.Env):
             reward = - (self.episode_length - self.step_counter)
             terminated = True
 
-        info = {"state": self.state, "reward": reward_info}
+        info = {"state": self.state, "reward": reward_info, "vel_ref": self.vel_ref}
         
         return obs, reward, terminated, truncated, info
     
@@ -316,3 +323,4 @@ if __name__ == "__main__":
     # env = MavEnv()
     # evaluate_model(model, env)
     # plt.show()
+    

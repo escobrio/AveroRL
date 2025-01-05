@@ -18,7 +18,7 @@ def plot_episode(observations, infos, actions, rewards):
     lin_vel_penalty = np.array([info.get('reward', {}).get('lin_vel_penalty', 0) for info in infos])
     ang_vel_penalty = np.array([info.get('reward', {}).get('ang_vel_penalty', 0) for info in infos])
     setpoint_diff_penalty = np.array([info.get('reward', {}).get('setpoint_diff_penalty', 0) for info in infos])
-    # vel_ref = np.array([info.get('vel_ref', np.array([0, 0, 0])) for info in infos])
+    vel_ref = np.array([info.get('vel_ref', np.zeros(6)) for info in infos])
 
     k_f = infos[0]["k_f"]
     k_omega = infos[0]["k_omega"]
@@ -72,9 +72,9 @@ def plot_episode(observations, infos, actions, rewards):
     axs[1,0].plot(states[:, 7], '.', markersize=1, color=colors[0])
     axs[1,0].plot(states[:, 8], '.', markersize=1, color=colors[1])
     axs[1,0].plot(states[:, 9], '.', markersize=1, color=colors[2])
-    # axs[1,0].plot(vel_ref[:, 0], color=colors[0], label=f"lin_vel_x_ref", alpha=0.3)
-    # axs[1,0].plot(vel_ref[:, 1], color=colors[1], label=f"lin_vel_y_ref", alpha=0.3)
-    # axs[1,0].plot(vel_ref[:, 2], color=colors[2], label=f"lin_vel_z_ref", alpha=0.3)
+    axs[1,0].plot(vel_ref[:, 0], color=colors[0], label=f"lin_vel_x_ref", alpha=0.3)
+    axs[1,0].plot(vel_ref[:, 1], color=colors[1], label=f"lin_vel_y_ref", alpha=0.3)
+    axs[1,0].plot(vel_ref[:, 2], color=colors[2], label=f"lin_vel_z_ref", alpha=0.3)
     axs[1,0].grid(True, alpha=0.3)
     axs[1,0].legend(loc='center right')
 
@@ -88,6 +88,9 @@ def plot_episode(observations, infos, actions, rewards):
     axs[1,1].plot(states[:, 10], '.', markersize=1, color=colors[0])
     axs[1,1].plot(states[:, 11], '.', markersize=1, color=colors[1])
     axs[1,1].plot(states[:, 12], '.', markersize=1, color=colors[2])
+    axs[1,1].plot(vel_ref[:, 3], color=colors[0], label=f"ang_vel_x_ref", alpha=0.3)
+    axs[1,1].plot(vel_ref[:, 4], color=colors[1], label=f"ang_vel_y_ref", alpha=0.3)
+    axs[1,1].plot(vel_ref[:, 5], color=colors[2], label=f"ang_vel_z_ref", alpha=0.3)
     axs[1,1].grid(True, alpha=0.3)
     axs[1,1].axhline(0, color='black', alpha=0.2)
     axs[1,1].legend(loc='center right')
