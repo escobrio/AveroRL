@@ -146,7 +146,7 @@ def plot_episode(observations, infos, actions, rewards):
     plt.tight_layout()
 
     fig2 = plt.figure(figsize=(20, 12))
-    gs2 = fig2.add_gridspec(2, 2, hspace=0)
+    gs2 = fig2.add_gridspec(3, 2, hspace=0)
     axs2 = gs2.subplots(sharex=True)
 
     axs2[0,0].set_title(fr"$Fanspeeds, k_\omega = {{{k_omega:.1f}}}Hz, k_f = {{{k_f:.2e}}} [N/PWM²]$", loc='center', y=0.91)
@@ -173,7 +173,21 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[1,0].axhline(0, color='black', alpha=0.2)
     axs2[1,0].legend(loc='center right')
 
-    axs2[0,1].set_title(fr"$Nozzle angles, k_\varphi = {{{k_phi:.1f}}} [Hz]$", loc='center', y=0.92)
+    axs2[2,0].set_title(fr"$\dot\omega$", loc='center', y=0.91)
+    axs2[2,0].set_ylabel("[0, 1]")
+    axs2[2,0].set_xlabel("timesteps")
+    # axs2[2,0].set_ylim(1050, 1950)
+    # axs2[2,0].set_yticks([1050, 1500, 1950])
+    for i in range(19, 22, 1):
+        # axs2[2,0].plot(1050 + 900 * states[:, i], 'o', markersize=1, color=colors[i-19], label=f"fanspeed_{i-19}")
+        # axs2[2,0].plot(1050 + 900 * states[:, i+9], '.', markersize=2, linestyle='--', color=colors[i-19], label=f"fanspeed_setpoint{i-19}", alpha=0.5)
+        axs2[2,0].plot(np.diff(states[:, i]) / 0.01, color=colors[i-19], label=fr"$\dot\omega_{{{i-18}}}$", alpha=0.5)
+        axs2[2,0].plot(np.diff(states[:, i]) / 0.01, '.', markersize=2, color=colors[i-19])
+        axs2[2,0].plot(np.diff(states[:, i+9]) / 0.01, '.', markersize=2, linestyle='--', color=colors[i-19], label=fr"$\dot\omega^*_{{{i-18}}}$", alpha=0.3)
+    axs2[2,0].grid(True, alpha=0.3)
+    axs2[2,0].legend(loc='center right')
+
+    axs2[0,1].set_title(fr"$Nozzle angles, \varphi = {{{k_phi:.1f}}} [Hz]$", loc='center', y=0.92)
     axs2[0,1].set_ylabel("[°]")
     axs2[0,1].set_xlabel("timesteps")
     # axs2[0,1].set_yticks(np.arange(-360, 360, 30))
@@ -195,6 +209,20 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[1,1].grid(True, alpha=0.3)
     axs2[1,1].axhline(0, color='black', alpha=0.2)
     axs2[1,1].legend(loc='center right')
+
+    axs2[2,1].set_title(fr"$\dot\varphi$", loc='center', y=0.92)
+    axs2[2,1].set_ylabel("[rad/s]")
+    axs2[2,1].set_xlabel("timesteps")
+    # axs2[2.1].set_yticks(np.arange(-360, 360, 30))
+    for i in range(3):
+        for j in range(2):
+            axs2[2,1].plot(np.diff(states[:, 22+i*2+j]) / 0.01, color=colors[i*2+j], label=fr"$\dot\varphi_{{{i+1}{j+1}}}$", alpha=0.5)
+            axs2[2,1].plot(np.diff(states[:, 22+i*2+j]) / 0.01, '.', markersize=2, color=colors[i*2+j])
+            axs2[2,1].plot(np.diff(states[:, 31+i*2+j]) / 0.01, '.', markersize=2, linestyle='--', color=colors[i*2+j], label=fr"$\dot\varphi^*_{{{i+1}{j+1}}}$", alpha=0.2)
+    axs2[2,1].grid(True, alpha=0.3)
+    axs2[2,1].axhline(0, color='black', alpha=0.2)
+    axs2[2,1].legend(loc='center right')
+
 
     plt.tight_layout()
     # plt.show()
