@@ -18,19 +18,19 @@ class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
-        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, last_action]
+        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, nozzle_angles last_action]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 18),
-            high=np.array([np.inf] * 18),
+            low=np.array([-np.inf] * 30),
+            high=np.array([np.inf] * 30),
             dtype=np.float32
         )
         
         # Actions space: 
-        # [fanspeed1_setpoint, fanspeed2_setpoint, fanspeed3_setpoint, #[rad]
-        # nozzleangle1_setpoint, nozzleangle2_setpoint, nozzleangle3_setpoint, nozzleangle4_setpoint, nozzleangle5_setpoint, nozzleangle6_setpoint #[PWM]]
+        # [fanspeed1_setpoint, fanspeed2_setpoint, fanspeed3_setpoint, #[PWM/s]
+        # nozzleangle1_setpoint, nozzleangle2_setpoint, nozzleangle3_setpoint, nozzleangle4_setpoint, nozzleangle5_setpoint, nozzleangle6_setpoint #[rad/s]]
         self.action_space = gym.spaces.Box(
-            low=np.array([-1, -1, -1, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]),
-            high=np.array([1, 1, 1, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi]),
+            low=np.array([0, 0, 0, -np.pi, -np.pi, -np.pi, -np.pi, -np.pi, -np.pi]),
+            high=np.array([1, 1, 1, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi]),
             dtype=np.float32
         )
 
@@ -44,39 +44,43 @@ class MavEnv(gym.Env):
                               0, 0, 0,           # [19:22] fanspeeds \in [0, 1]
                               0, 0, 0, 0, 0, 0,  # [22:28] nozzle angles [rad]
                               0, 0, 0,           # [28:31] fanspeeds setpoints \in [0, 1]
-                              0, 0, 0, 0, 0, 0]) # [31:37] nozzle angles setpoints  [rad]
+                              0, 0, 0, 0, 0, 0   # [31:37] nozzle angles setpoints  [rad]
+                              ])
         
         # Physical and simulation parameters
         self.mass = 5.218  # [kg]
         self.inertia = np.array([0.059829689, 0.06088309, 0.098981953])  # [kg*m^2], TODO: non-diagonal elements
         self.g = np.array([0, 0, -9.81])    # [m/s^2], Gravity vector in world frame
+        # self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
         self.k_f = 0.00005749               # [N/(PWM-1050)²], Thrust constant, Thrust_force = k_f * omega²
-        self.k_phi = 10.586                 # [Hz], First order nozzle angle model, 1/tau where tau is time constant
-        self.k_phi_std = 3.04               # [Hz], standard deviation
-        self.k_omega = 12                   # [Hz], First order fan speed model 
-        self.k_omega_std = 1
-        self.phi_dot_max = 10
-        self.omega_dot_max = 10
-        self.vel_ref = np.array([0, 0, 0, 0, 0, 0])
+        self.k_phi = 6.45                   # [Hz], First order nozzle angle model
+        self.k_phi_randomized = 6.45        # [Hz], First order nozzle angle model
+        self.k_phi_std = 0.159              # std deviation
+        self.phi_dot_max = 1                # [rad/s], DXL datasheet says max 103 rev/min
+        self.k_omega = 12.253               # [Hz], First order fanspeed model
+        self.k_omega_randomized = 12.253    # [Hz], First order fanspeed model
+        self.k_omega_std = 0.213            # std deviation of k_omega
+        self.omega_dot_max = 5.0            # TODO: What's omega_dot_max??? 750PWM/s = 0.833 for sure, but for sure even faster!
+        self.lin_vel_ref = np.array([0, 0, 1]) # velocity_reference to follow. TODO: 3-D
         self.step_counter = 0
-        self.episode_length = 500
-        self.last_setpoints = np.zeros(9)
-        self.dt = 0.01  # [s]
+        self.dt = 0.01                      # [s]
+        self.last_action = np.zeros(9)      # Buffer actions and apply them one timestep later
         
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
-        self.episode_length = np.random.uniform(low=500, high=1000)
-        self.k_f = np.random.normal(0.00005749, 0.00001)                # std dev is 17%
-        self.k_phi = np.random.normal(10.586, self.k_phi_std)
-        self.k_omega = np.random.normal(12, self.k_omega_std)
-        # self.vel_ref = np.random.uniform(low=-1, high=1, size=6)
-        self.vel_ref = np.zeros(6)
+
+        # Randomize parameters
+        self.k_f = 0.00005749 + np.random.uniform(- 0.00000575, 0.00000575)    # +- 10%
+        self.phi_dot_max = np.random.uniform(1.0, 1.1)
+        self.omega_dot_max = np.random.uniform(4.9, 5.0)
+        self.k_phi_randomized = np.random.normal(6.45, 2)         # Randomize 
+        self.k_omega_randomized = np.random.normal(12.253, 4)
+        self.lin_vel_ref = np.random.uniform(-1, 1, 3)
         # Initialize state: 
         
         # Randomize position (x, y, z)
-        position = np.random.uniform(low=-10, high=10, size=3)  # Example range [-10, 10] for each axis
-        # position = np.array([0, 0, 0])
+        position = np.array([0, 0, 0])
 
         # Randomize orientation quaternion [x, y, z, w] (ensure it's a valid quaternion)
         rpy = np.random.uniform(low=-30, high=30, size=3)
@@ -84,16 +88,18 @@ class MavEnv(gym.Env):
         # orientation = np.array([0, 0, 0, 1])
 
         # Randomize linear and angular velocity and acceleration
-        lin_vel = np.random.uniform(low=-2, high=2, size=3)  # Example range [-5, 5]
-        ang_vel = np.random.uniform(low=-2, high=2, size=3)  # Example range [-5, 5]
-        lin_acc = np.random.uniform(low=-2, high=2, size=3)  # Example range [-2, 2]
-        ang_acc = np.random.uniform(low=-2, high=2, size=3)  # Example range [-2, 2]
+        lin_vel = np.random.uniform(low=-1.0, high=1.0, size=3)
+        ang_vel = np.random.uniform(low=-1.0, high=1.0, size=3)
+        lin_acc = np.random.uniform(low=-2.0, high=2.0, size=3)
+        ang_acc = np.random.uniform(low=-2.0, high=2.0, size=3)
 
         # Randomize actuators
-        fan_speeds = np.random.uniform(low=-0.5, high=0.5, size=3)  # Example range [0, 100]
-        fanspeeds_setpoints = np.random.uniform(low=-0.5, high=0.5, size=3)  # Example range [0, 100]
-        nozzle_angles = np.random.uniform(low=-1, high=1, size=6)  # Example range [-1.5, 1.5]
-        nozzle_setpoints = np.random.uniform(low=-1, high=1, size=6)  # Example range [-1.5, 1.5]
+        fan_speeds = np.random.uniform(low=0.0, high=0.7, size=3)
+        # fan_speeds = np.array([0.61, 0.61, 0.61])
+        nozzle_angles = np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]) + np.random.uniform(low=-1.5, high=1.5, size=6) 
+        # fanspeeds_setpoints = np.random.uniform(low=0.5, high=0.7, size=3)
+        fanspeeds_setpoints = np.array([0.61, 0.61, 0.61])
+        nozzle_setpoints = np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]) + np.random.uniform(low=-1.5, high=1.5, size=6)
 
         # Combine all into state vector
         self.state = np.concatenate([
@@ -109,54 +115,55 @@ class MavEnv(gym.Env):
             nozzle_setpoints
         ])
         
-        g_bodyframe = quaternion_rotate_vector(orientation, self.g)
-        lin_vel_err = lin_vel - self.vel_ref[:3]
-        ang_vel_err = ang_vel - self.vel_ref[3:]
-        self.last_setpoints = np.concatenate([fanspeeds_setpoints, nozzle_setpoints])
-        last_action = np.zeros(9)
-        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, last_action])
-        info = {"state": self.state, "k_f": self.k_f, "k_omega": self.k_omega, "k_phi": self.k_phi}
+        g_bodyframe = quaternion_rotate_vector(orientation, self.g) # TODO: Is this correct? Shouldn't it be with inverse quaternion?
+        first_action = np.zeros(9)
+        # r = random.random()
+        self.last_action = first_action
+        
+        lin_vel_err = lin_vel - self.lin_vel_ref
+
+        obs = np.concatenate([lin_vel_err, ang_vel, g_bodyframe, np.sin(nozzle_angles), np.cos(nozzle_angles), first_action])
+        info = {"state": self.state, "k_f": self.k_f, "k_omega": self.k_omega_randomized, "k_phi": self.k_phi_randomized}
         return obs, info
     
     # First order actuator models, k[Hz] = 1 / tau [s]
-    # tau [s] is the empirical time constant of the actuator state following a setpoint [s]
-    # state_dot_k = (1/tau) * (setpoint_k - state)
+    # tau [s] is the empirical time constant of the actuator state following a setpoint
+    # state_dot_k = (1/tau) * (setpoint_k - state_k)
     # state_{k+1} = state_k + state_dot_k * dT
+    # action is change in actuator setpoint
     def first_order_actuator_models(self, action):
-        # Update nozzle angle [rad] according to first order model of error = setpoint - state
-        nozzles_setpoint = action[3:]
-        nozzles_setpoint = np.clip(nozzles_setpoint, self.last_setpoints[3:] - 0.01 * self.phi_dot_max, self.last_setpoints[3:] + 0.01 * self.phi_dot_max)
-        nozzles_state = self.state[22:28]
-        nozzles_dot = self.k_phi * (nozzles_setpoint - nozzles_state)
-        nozzles_state += nozzles_dot * self.dt
 
-        # Update fan speed [PWM] according to first order model of error = setpoint - state
+        # Update setpoints and nozzle_angles [rad] according to first order model
+        nozzles_setpoint = action[3:]                                                           # Setpoint update with actuator state information
+        nozzles_state = self.state[22:28]
+        nozzles_dot = self.k_phi_randomized * (nozzles_setpoint - nozzles_state)                # Nominal k_phi used to set setpoint, k_phi_randomized used to simulate different MAV dynamics
+        nozzles_state += nozzles_dot * self.dt
+        nozzles_state = nozzles_state.clip(-np.pi, np.pi)
+
+        # Update setpoints and normalized fanspeeds according to first order model
         fanspeeds_setpoint = action[:3]
-        fanspeeds_setpoint = np.clip(fanspeeds_setpoint, self.last_setpoints[:3] - 0.01 * self.omega_dot_max, self.last_setpoints[:3] + 0.01 * self.omega_dot_max)
         fanspeeds_state = self.state[19:22]
-        fanspeeds_dot = self.k_omega * (fanspeeds_setpoint - fanspeeds_state)
+        fanspeeds_dot = self.k_omega_randomized * (fanspeeds_setpoint - fanspeeds_state)        # Same as above
         fanspeeds_state += fanspeeds_dot * self.dt
+        fanspeeds_state = fanspeeds_state.clip(0, 1)
 
         return nozzles_state, nozzles_setpoint, fanspeeds_state, fanspeeds_setpoint
 
     # Compute thrust vectors [N] of the 3 nozzles in body frame
-    def compute_thrust_vectors(self, nozzles_angles, fanspeeds):
+    def compute_thrust_vectors(self, nozzleangles, fanspeeds):
         # thrust = k_f * (PWM - 1050)² * normal_vector
-        # In this case, using the actual PWM signal, so -1050 is NOT already subtracted:
-        fanspeeds = 1050 + (fanspeeds + 1) * 450
-        fanspeeds_squared = np.square(fanspeeds-1050)[:, np.newaxis]
-        thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzles_angles)
+        fanspeeds_pwm = 1050 + fanspeeds * 900                                                  # Scale normalized fanspeeds \in [0, 1] to PWM signal \in [1050, 1950]
+        fanspeeds_squared = np.square(fanspeeds_pwm - 1050)[:, np.newaxis]
+        thrust_vectors = self.k_f * fanspeeds_squared * thrustdirections(nozzleangles)
         return thrust_vectors
     
-    def compute_forces_and_torques(self, thrust_vectors, nozzle_angles):
-        """Compute net force and torque from thrust vectors."""
+    def compute_forces_and_torques(self, thrust_vectors):
         # Net force is sum of all thrust vectors
         force = np.sum(thrust_vectors, axis=0)
-
-        # Compute distance vector r from Body frame to Endeffector of the Nozzle, where thrust is applied
-        r_BE_1, r_BE_2, r_BE_3 = r_BE(nozzle_angles)
-
+        
         # Compute torques from each thrust
+        nozzle_states = np.zeros(6) # TODO use actual phi commands
+        r_BE_1, r_BE_2, r_BE_3 = r_BE(nozzle_states)
         torque = np.zeros(3)
         torque += np.cross(r_BE_1, thrust_vectors[0])
         torque += np.cross(r_BE_2, thrust_vectors[1])
@@ -168,6 +175,10 @@ class MavEnv(gym.Env):
         terminated = False
         truncated = False
 
+        # Buffer action and apply
+        # self.action_buffer.append(action)
+        # action = self.action_buffer.pop(0)
+
         # Extract current state
         position = self.state[0:3]
         orientation = R.from_quat(self.state[3:7])
@@ -175,16 +186,17 @@ class MavEnv(gym.Env):
         ang_vel = self.state[10:13]
 
         # Update actuators
-        nozzle_angles, nozzle_setpoints, fanspeeds, fanspeeds_setpoints = self.first_order_actuator_models(action)
+        nozzleangles, nozzle_setpoints, fanspeeds, fanspeeds_setpoints = self.first_order_actuator_models(action)
 
         # Compute thrust vectors from actuator states [bodyframe]
-        thrust_vectors = self.compute_thrust_vectors(nozzle_angles, fanspeeds)
+        thrust_vectors = self.compute_thrust_vectors(nozzleangles, fanspeeds)
         
         # Compute net force and torque [bodyframe]
-        force, torque = self.compute_forces_and_torques(thrust_vectors, nozzle_angles)
+        force, torque = self.compute_forces_and_torques(thrust_vectors)
 
         # Update angular velocity and orientation
-        ang_acc = torque / self.inertia # TODO np.cross(ang_vel, self.inertia @ angular_velocity)
+        ang_acc = torque / self.inertia                                                         # TODO np.cross(ang_vel, self.inertia @ angular_velocity), only for non-diagonal inertia tensor
+        ang_acc = ang_acc.clip(-800, 800)                                                       # Clip to maximum realistic ang_acc
         ang_vel += ang_acc * self.dt
         orientation *= R.from_rotvec(ang_vel * self.dt)
 
@@ -194,7 +206,8 @@ class MavEnv(gym.Env):
         g_bodyframe = orientation.inv().apply(self.g)
         
         # Update linear velocity and position
-        lin_acc = force / self.mass + g_bodyframe - np.cross(ang_vel, lin_vel) # With Coriolis force
+        lin_acc = force / self.mass + g_bodyframe - np.cross(ang_vel, lin_vel)
+        lin_acc = lin_acc.clip(-40, 40)     # Clip to maximum realistic lin_acc
         lin_vel += lin_acc * self.dt
         position += orientation.apply(lin_vel) * self.dt
         
@@ -207,40 +220,39 @@ class MavEnv(gym.Env):
             lin_acc,
             ang_acc,
             fanspeeds,
-            nozzle_angles,
+            nozzleangles,
             fanspeeds_setpoints,
             nozzle_setpoints
         ])
 
+        lin_vel_err = lin_vel - self.lin_vel_ref
+
+        obs = np.concatenate([lin_vel_err, ang_vel, g_bodyframe, np.sin(nozzleangles), np.cos(nozzleangles), action])
 
         # Reward Function
-        lin_vel_err = lin_vel - self.vel_ref[:3]
-        lin_vel_penalty = np.linalg.norm(lin_vel_err)
-        ang_vel_err = ang_vel - self.vel_ref[3:]
-        ang_vel_penalty = np.linalg.norm(ang_vel_err)
+        lin_vel_error = np.linalg.norm(lin_vel_err)
+        ang_vel_penalty = np.linalg.norm(ang_vel)
         action_penalty = np.linalg.norm(action)
-        # orientation_penalty = np.linalg.norm(orientation.as_euler('xyz', degrees=True))
-        # fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
-        # nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
-        # setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
-        # turn_penalty = 0
-        reward = - 0.12 * lin_vel_penalty - 0.0 * ang_vel_penalty
-        reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_penalty, "ang_vel_penalty": - 0.0 * ang_vel_penalty, "setpoint_diff_penalty": - 0.0 * action_penalty}
-        
-        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, action])
-        self.last_setpoints = np.concatenate([fanspeeds_setpoints, nozzle_setpoints])
+        orientation_penalty = np.linalg.norm(orientation.as_euler('xyz', degrees=True))
+        fanspeed_penalty = np.linalg.norm(fanspeeds_setpoints - 0.61)
+        nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
+        setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
+        turn_penalty = 0
+        reward = - 0.12 * lin_vel_error - 0.01 * ang_vel_penalty - 0.001 * setpoint_diff_penalty
+        # Didn't work:
+        # if(np.any(np.abs(orientation.as_euler('xyz', degrees=True))[:2] > 175)):
+        #     turn_penalty = 5 
+        #     reward -= turn_penalty
+        reward_info = {"lin_vel_penalty": - 0.11 * lin_vel_error, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.001 * action_penalty}
 
-        # Check if truncated
+        # Truncate episode after 500 timesteps
         self.step_counter += 1
-        if (self.step_counter > self.episode_length):
+        if (self.step_counter > 500):
             truncated = True
 
-        # # Terminate if velocity is going crazy
-        if (np.any(np.abs(lin_vel) > 100) or np.any(np.abs(ang_vel) > 100)):
-            reward = - (self.episode_length - self.step_counter)
-            terminated = True
+        self.last_action = action
 
-        info = {"state": self.state, "reward": reward_info, "vel_ref": self.vel_ref}
+        info = {"state": self.state, "reward": reward_info, "vel_ref": self.lin_vel_ref}
         
         return obs, reward, terminated, truncated, info
     
@@ -248,15 +260,16 @@ class MavEnv(gym.Env):
 
 def train_MAV():
 
+    # for i in range(8):
     env = MavEnv()
 
     # Uncomment to load model, not recommended
     # model = PPO.load("data/ppo_mav_model", env=env)
-    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    model = PPO("MlpPolicy", env, learning_rate=0.0001, verbose=1, tensorboard_log="./logs/ppo_mav/")
 
-    eval_callback = TensorboardCallback(env=env, eval_freq=100_000, evaluate_fct=evaluate_model, verbose=1)
+    eval_callback = TensorboardCallback(env=env, eval_freq=200_000, evaluate_fct=evaluate_model, verbose=1)
 
-    model.learn(total_timesteps=1_000_000, callback=eval_callback)
+    model.learn(total_timesteps=1_500_000, callback=eval_callback)
 
     model.save("data/ppo_mav_model")
 
@@ -266,8 +279,6 @@ class TensorboardCallback(BaseCallback):
         self.eval_env = env
         self.eval_freq = eval_freq
         self.evaluate_fct = evaluate_fct
-        self.save_path = "./logs/ppo_mav/"
-        self.best_reward = -float("inf")  # Initialize with a very low value
 
     def _on_training_start(self):
         writer = SummaryWriter(log_dir=self.logger.dir)
@@ -278,7 +289,6 @@ class TensorboardCallback(BaseCallback):
         writer.close()
 
     def _on_step(self) -> bool:
-        # Evaluate model and plot on tensorboard
         if self.n_calls % self.eval_freq == 0:
             if self.verbose > 0:
                 print(f"\nEvaluating at step {self.n_calls}...")
@@ -287,19 +297,7 @@ class TensorboardCallback(BaseCallback):
             self.logger.record("plots/fig1", Figure(fig1, close=True), exclude=("stdout", "log", "json", "csv"))
             self.logger.record("plots/fig2", Figure(fig2, close=True), exclude=("stdout", "log", "json", "csv"))
             plt.close('all')
-        return True
-    
-    # def _on_rollout_end(self) -> None:
-    #     # Evaluate the current rollout reward
-    #     rollout_rewards = self.locals["rollout_buffer"].rewards
-    #     mean_reward = np.mean(rollout_rewards)
-    #     print(f"mean_reward: {mean_reward}, len: {len(rollout_rewards)}")
-    #     if mean_reward > self.best_reward:
-    #         self.best_reward = mean_reward
-    #         if self.verbose > 0:
-    #             print(f"New best reward: {self.best_reward:.2f}, saving model to {self.save_path}")
-    #         # Save the best model
-    #         self.model.save(f"{self.save_path}ppo_mav_{mean_reward:.3f}")
+        return True    
 
 def evaluate_model(model, env):
 
@@ -349,4 +347,3 @@ if __name__ == "__main__":
     # env = MavEnv()
     # evaluate_model(model, env)
     # plt.show()
-    
