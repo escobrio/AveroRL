@@ -187,7 +187,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[2,0].grid(True, alpha=0.3)
     axs2[2,0].legend(loc='center right')
 
-    axs2[0,1].set_title(fr"$Nozzle angles, \varphi = {{{k_phi:.1f}}} [Hz]$", loc='center', y=0.92)
+    axs2[0,1].set_title(fr"$Nozzle angles, k_\varphi = {{{k_phi:.1f}}} [Hz]$", loc='center', y=0.92)
     axs2[0,1].set_ylabel("[°]")
     axs2[0,1].set_xlabel("timesteps")
     # axs2[0,1].set_yticks(np.arange(-360, 360, 30))
@@ -214,7 +214,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[2,1].set_ylabel("[rad/s]")
     axs2[2,1].set_xlabel("timesteps")
     # axs2[2.1].set_yticks(np.arange(-360, 360, 30))
-    axs2[2.1].set_ylim(-10, 10)
+    axs2[2,1].set_ylim(-10, 10)
     for i in range(3):
         for j in range(2):
             axs2[2,1].plot(np.diff(states[:, 22+i*2+j]) / 0.01, color=colors[i*2+j], label=fr"$\dot\varphi_{{{i+1}{j+1}}}$", alpha=0.5)
