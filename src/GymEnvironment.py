@@ -57,7 +57,7 @@ class MavEnv(gym.Env):
         self.k_omega_std = 1                # [Hz], Totally guessed
         self.phi_dot_max = 2
         self.omega_dot_max = 2
-        self.vel_ref = np.array([0, 0, 0, 0, 0, 0])
+        self.vel_ref = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self.step_counter = 0
         self.episode_length = 750
         self.dt = 0.01  # [s]
@@ -70,12 +70,11 @@ class MavEnv(gym.Env):
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
         # self.vel_ref = np.random.uniform(low=-1, high=1, size=6)
-        self.vel_ref = np.zeros(6)
+        self.vel_ref = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         # Initialize state: 
         
         # Randomize position (x, y, z)
-        position = np.random.uniform(low=-10, high=10, size=3)
-        # position = np.array([0, 0, 0])
+        position = np.array([0, 0, 0])
 
         # Randomize orientation quaternion [x, y, z, w] (ensure it's a valid quaternion)
         rpy = np.random.uniform(low=-5, high=5, size=3)
@@ -85,8 +84,8 @@ class MavEnv(gym.Env):
         # Randomize linear and angular velocity and acceleration
         lin_vel = np.random.uniform(low=-0.1, high=0.1, size=3)
         ang_vel = np.random.uniform(low=-0.1, high=0.1, size=3)
-        lin_acc = np.random.uniform(low=-0.1, high=0.1, size=3)
-        ang_acc = np.random.uniform(low=-0.1, high=0.1, size=3)
+        lin_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # Side note, this should be lin_acc = force / self.mass + g_bodyframe
+        ang_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # and this ang_acc = torque / self.inertia
 
         # Randomize actuators
         fan_speeds = np.random.uniform(low=0.6, high=0.61, size=3)
@@ -109,7 +108,8 @@ class MavEnv(gym.Env):
             nozzle_setpoints
         ])
         
-        g_bodyframe = quaternion_rotate_vector(orientation, self.g)
+        # g_bodyframe = quaternion_rotate_vector(orientation, self.g)     # TODO: BUG! THIS IS WRONG! IT's ORIENTATIN INVERSE!
+        g_bodyframe = R.from_euler('xyz', rpy, degrees=True).inv().apply(self.g)
         lin_vel_err = lin_vel - self.vel_ref[:3]
         ang_vel_err = ang_vel - self.vel_ref[3:]
         last_action = np.zeros(9)
@@ -134,6 +134,7 @@ class MavEnv(gym.Env):
         omega_state = self.state[19:22]
         omega_setpoint = omega_state + omega_dot_cmd / 12.0         # Using nominal k_omega value of 12.0Hz
         omega_setpoint = np.clip(omega_setpoint, 0, 1)
+        # Comment out for evaluation!
         if self.step_counter < 100:
             omega_setpoint = np.clip(omega_setpoint, 0.5, 1)
         omega_dot = self.k_omega * (omega_setpoint - omega_state)
@@ -170,6 +171,11 @@ class MavEnv(gym.Env):
     def step(self, action):
         terminated = False
         truncated = False
+
+        # # Time_dependent randomizations
+        # self.k_f -= 0.000000057
+        # self.vel_ref[5] = np.sin(0.01 * self.step_counter)
+        # self.vel_ref[2] = np.sin(0.01 * self.step_counter)
 
         # Extract current state
         position = self.state[0:3]

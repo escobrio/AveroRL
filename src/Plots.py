@@ -152,6 +152,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[0,0].set_title(fr"$Fanspeeds, k_\omega = {{{k_omega:.1f}}}Hz, k_f = {{{k_f:.2e}}} [N/PWM²]$", loc='center', y=0.91)
     axs2[0,0].set_ylabel("[0, 1]")
     axs2[0,0].set_xlabel("timesteps")
+    axs2[0,0].set_ylim(0, 1)
     # axs2[0,0].set_ylim(1050, 1950)
     # axs2[0,0].set_yticks([1050, 1500, 1950])
     for i in range(19, 22, 1):
@@ -166,6 +167,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[1,0].set_title("Fanspeeds Actions", loc='center', y=0.94)
     axs2[1,0].set_ylabel("[0, 1]")
     axs2[1,0].set_xlabel("timesteps")
+    axs2[1,0].set_ylim(-1, 1)
     for i in range(0, 3, 1):
         axs2[1,0].plot(actions[:, i], color=colors[i], label=f"action_{i}", alpha=0.5)
         axs2[1,0].plot(actions[:, i], '.', markersize=2, color=colors[i])
@@ -176,7 +178,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[2,0].set_title(fr"$\dot\omega$", loc='center', y=0.91)
     axs2[2,0].set_ylabel("[0, 1]")
     axs2[2,0].set_xlabel("timesteps")
-    axs2[2,0].set_ylim(-10, 10)
+    axs2[2,0].set_ylim(-3, 3)
     # axs2[2,0].set_yticks([1050, 1500, 1950])
     for i in range(19, 22, 1):
         # axs2[2,0].plot(1050 + 900 * states[:, i], 'o', markersize=1, color=colors[i-19], label=f"fanspeed_{i-19}")
@@ -203,6 +205,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[1,1].set_title("Nozzle Actions", loc='center', y=0.93)
     axs2[1,1].set_ylabel("[0, 1]")
     axs2[1,1].set_xlabel("timesteps")
+    axs2[1,1].set_ylim(-1, 1)
     for i in range(3, 9, 1):
         axs2[1,1].plot(actions[:, i], color=colors[i-3], label=f"action_{i}", alpha=0.5)
         axs2[1,1].plot(actions[:, i], '.', markersize=2, color=colors[i-3], alpha=1)
@@ -214,7 +217,7 @@ def plot_episode(observations, infos, actions, rewards):
     axs2[2,1].set_ylabel("[rad/s]")
     axs2[2,1].set_xlabel("timesteps")
     # axs2[2.1].set_yticks(np.arange(-360, 360, 30))
-    axs2[2,1].set_ylim(-10, 10)
+    axs2[2,1].set_ylim(-3, 3)
     for i in range(3):
         for j in range(2):
             axs2[2,1].plot(np.diff(states[:, 22+i*2+j]) / 0.01, color=colors[i*2+j], label=fr"$\dot\varphi_{{{i+1}{j+1}}}$", alpha=0.5)
