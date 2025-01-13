@@ -12,16 +12,17 @@ from Plots import plot_episode
 from torch.utils.tensorboard import SummaryWriter
 import copy
 import random
+from collections import deque
 
 # Gymnasium environment to train RL agent
 class MavEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
-        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles]
+        # Observation space: [lin_vel, ang_vel, gravity vector in body frame, fan_speeds, nozzle_angles, thrust/mass, torque/inertia, last_action]
         self.observation_space = gym.spaces.Box(
-            low=np.array([-np.inf] * 18),
-            high=np.array([np.inf] * 18),
+            low=np.array([-np.inf] * 33),
+            high=np.array([np.inf] * 33),
             dtype=np.float32
         )
         
@@ -61,6 +62,7 @@ class MavEnv(gym.Env):
         self.step_counter = 0
         self.episode_length = 750
         self.dt = 0.01  # [s]
+        self.action_buffer = deque([])
         
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -70,7 +72,17 @@ class MavEnv(gym.Env):
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
         # self.vel_ref = np.random.uniform(low=-1, high=1, size=6)
-        self.vel_ref = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.vel_ref = np.zeros(6)
+        # Randomize time delays
+        r = random.random()
+        if r < 0.25:
+            self.action_buffer = deque([np.zeros(9)])
+        elif r < 0.5:
+            self.action_buffer = deque([np.zeros(9), np.zeros(9)])
+        elif r < 0.75:
+            self.action_buffer = deque([np.zeros(9), np.zeros(9), np.zeros(9)])
+        else:
+            self.action_buffer = deque([np.zeros(9), np.zeros(9), np.zeros(9), np.zeros(9)])
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -107,13 +119,17 @@ class MavEnv(gym.Env):
             fanspeeds_setpoints,
             nozzle_setpoints
         ])
+
+
+        thrust_vectors = self.compute_thrust_vectors(nozzle_angles, fan_speeds)
+        force, torque = self.compute_forces_and_torques(thrust_vectors, nozzle_angles)
         
         # g_bodyframe = quaternion_rotate_vector(orientation, self.g)     # TODO: BUG! THIS IS WRONG! IT's ORIENTATIN INVERSE!
         g_bodyframe = R.from_euler('xyz', rpy, degrees=True).inv().apply(self.g)
         lin_vel_err = lin_vel - self.vel_ref[:3]
         ang_vel_err = ang_vel - self.vel_ref[3:]
         last_action = np.zeros(9)
-        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, fan_speeds, nozzle_angles])
+        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, fan_speeds, nozzle_angles, force/self.mass - np.cross(ang_vel, lin_vel), torque/self.inertia, last_action])
         info = {"state": self.state, "k_f": self.k_f, "k_omega": self.k_omega, "k_phi": self.k_phi}
         return obs, info
     
@@ -134,9 +150,8 @@ class MavEnv(gym.Env):
         omega_state = self.state[19:22]
         omega_setpoint = omega_state + omega_dot_cmd / 12.0         # Using nominal k_omega value of 12.0Hz
         omega_setpoint = np.clip(omega_setpoint, 0, 1)
-        # Comment out for evaluation!
-        if self.step_counter < 100:
-            omega_setpoint = np.clip(omega_setpoint, 0.5, 1)
+        if self.step_counter < 300:
+            omega_setpoint = np.clip(omega_setpoint, 0.4, 1)
         omega_dot = self.k_omega * (omega_setpoint - omega_state)
         omega_state += omega_dot * self.dt
         omega_state = np.clip(omega_state, 0, 1)
@@ -176,6 +191,9 @@ class MavEnv(gym.Env):
         # self.k_f -= 0.000000057
         # self.vel_ref[5] = np.sin(0.01 * self.step_counter)
         # self.vel_ref[2] = np.sin(0.01 * self.step_counter)
+        # Buffer actions to simulate time delays
+        self.action_buffer.append(action)
+        action = self.action_buffer.popleft()
 
         # Extract current state
         position = self.state[0:3]
@@ -233,10 +251,10 @@ class MavEnv(gym.Env):
         # nozzles_penalty = np.linalg.norm(nozzle_setpoints - np.array([0.80, -1.25, 0.80, -1.25, 0.80, -1.25]))
         # setpoint_diff_penalty = np.linalg.norm(action - self.last_action)
         # turn_penalty = 0
-        reward = - 0.12 * lin_vel_penalty - 0.01 * ang_vel_penalty
-        reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_penalty, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.0 * action_penalty}
+        reward = - 0.12 * lin_vel_penalty - 0.01 * ang_vel_penalty - 0.005 * action_penalty
+        reward_info = {"lin_vel_penalty": - 0.12 * lin_vel_penalty, "ang_vel_penalty": - 0.01 * ang_vel_penalty, "setpoint_diff_penalty": - 0.01 * action_penalty}
         
-        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, fanspeeds, nozzle_angles])
+        obs = np.concatenate([lin_vel_err, ang_vel_err, g_bodyframe, fanspeeds, nozzle_angles, force/self.mass, torque/self.inertia, action])
 
         # Check if truncated
         self.step_counter += 1
@@ -259,12 +277,12 @@ def train_MAV():
     env = MavEnv()
 
     # Uncomment to load model, not recommended
-    # model = PPO.load("data/ppo_mav_model", env=env)
-    model = PPO("MlpPolicy", env, learning_rate = lr_schedule, verbose=1, tensorboard_log="./logs/ppo_mav/")
+    # model = PPO.load("data/ppo_28", env=env, tensorboard_log="./logs/09accPenalty/")
+    model = PPO("MlpPolicy", env, learning_rate=lr_schedule, verbose=1, tensorboard_log="./logs/10actionBuffer/")
 
-    eval_callback = TensorboardCallback(env=env, eval_freq=200_000, evaluate_fct=evaluate_model, verbose=1)
+    eval_callback = TensorboardCallback(env=env, eval_freq=100_000, evaluate_fct=evaluate_model, verbose=1)
 
-    model.learn(total_timesteps=2_000_000, callback=eval_callback)
+    model.learn(total_timesteps=3_500_000, callback=eval_callback)
 
     model.save("data/ppo_mav_model")
 
