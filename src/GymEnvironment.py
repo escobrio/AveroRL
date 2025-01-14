@@ -12,6 +12,7 @@ from Plots import plot_episode
 from torch.utils.tensorboard import SummaryWriter
 import copy
 import random
+from collections import deque
 
 # Gymnasium environment to train RL agent
 class MavEnv(gym.Env):
@@ -60,6 +61,7 @@ class MavEnv(gym.Env):
         self.vel_ref = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self.step_counter = 0
         self.episode_length = 750
+        self.action_buffer = deque([])
         self.dt = 0.01  # [s]
         
     def reset(self, seed=None):
@@ -86,6 +88,9 @@ class MavEnv(gym.Env):
         ang_vel = np.random.uniform(low=-0.1, high=0.1, size=3)
         lin_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # Side note, this should be lin_acc = force / self.mass + g_bodyframe
         ang_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # and this ang_acc = torque / self.inertia
+
+        self.action_buffer = deque([np.zeros(9)])
+        print(f"action_buffer length: {len(self.action_buffer)}")
 
         # Randomize actuators
         fan_speeds = np.random.uniform(low=0.6, high=0.61, size=3)
@@ -171,6 +176,9 @@ class MavEnv(gym.Env):
     def step(self, action):
         terminated = False
         truncated = False
+
+        self.action_buffer.append(action)
+        action = self.action_buffer.popleft()
 
         # # Time_dependent randomizations
         # self.k_f -= 0.000000057
@@ -354,10 +362,10 @@ def evaluate_model(model, env):
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    train_MAV()
+    # train_MAV()
     
-    # model = PPO.load("data/ppo_mav_model")
-    # env = MavEnv()
-    # evaluate_model(model, env)
-    # plt.show()
+    model = PPO.load("data/ppo_mav_model")
+    env = MavEnv()
+    evaluate_model(model, env)
+    plt.show()
     
