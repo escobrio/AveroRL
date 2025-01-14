@@ -67,7 +67,7 @@ class MavEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
-        self.episode_length = np.random.uniform(low=500, high=1000)
+        self.episode_length = np.random.uniform(low=6000, high=6000)
         self.k_f = np.random.normal(0.00005749, 0.000005749)                # std dev is +-10%
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
@@ -83,6 +83,7 @@ class MavEnv(gym.Env):
             self.action_buffer = deque([np.zeros(9), np.zeros(9), np.zeros(9)])
         else:
             self.action_buffer = deque([np.zeros(9), np.zeros(9), np.zeros(9), np.zeros(9)])
+        print(f"r = {r:.3f}, action_buffer_len:{len(self.action_buffer)}")
         # Initialize state: 
         
         # Randomize position (x, y, z)
@@ -100,10 +101,11 @@ class MavEnv(gym.Env):
         ang_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # and this ang_acc = torque / self.inertia
 
         # Randomize actuators
-        fan_speeds = np.random.uniform(low=0.6, high=0.61, size=3)
+        fan_speeds = np.random.uniform(low=0.3, high=0.31, size=3)
         fanspeeds_setpoints = fan_speeds
         # nozzle_angles = np.random.uniform(low=-1, high=1, size=6)
-        nozzle_angles = np.array([0.80, -1.25, 0.81, -1.25, 0.79, -1.25])
+        # RL Policy prefers this...
+        nozzle_angles = np.array([0.80, -1.25, 0.81, -1.25, -0.79, +1.25]) + np.random.uniform(-0.1, 0.1, 6)
         nozzle_setpoints = nozzle_angles
 
         # Combine all into state vector
@@ -150,8 +152,8 @@ class MavEnv(gym.Env):
         omega_state = self.state[19:22]
         omega_setpoint = omega_state + omega_dot_cmd / 12.0         # Using nominal k_omega value of 12.0Hz
         omega_setpoint = np.clip(omega_setpoint, 0, 1)
-        if self.step_counter < 300:
-            omega_setpoint = np.clip(omega_setpoint, 0.4, 1)
+        # if self.step_counter < 300:
+        #     omega_setpoint = np.clip(omega_setpoint, 0.4, 1)
         omega_dot = self.k_omega * (omega_setpoint - omega_state)
         omega_state += omega_dot * self.dt
         omega_state = np.clip(omega_state, 0, 1)
@@ -372,10 +374,10 @@ def evaluate_model(model, env):
 if __name__ == "__main__":
 
     print(f"test_MAV")
-    train_MAV()
+    # train_MAV()
     
-    # model = PPO.load("data/ppo_mav_model")
-    # env = MavEnv()
-    # evaluate_model(model, env)
-    # plt.show()
+    model = PPO.load("data/ppo_38")
+    env = MavEnv()
+    evaluate_model(model, env)
+    plt.show()
     

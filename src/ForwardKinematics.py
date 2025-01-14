@@ -118,7 +118,7 @@ def main():
   # Calculate distance from bodyframe to endeffector 
   r_BE_1, r_BE_2, r_BE_3 = r_BE(states_phi)
   print(f"\nr_BE_1, r_BE_2, r_BE_3 [m]= \n{r_BE(states_phi)} ")
-      
+  
 if __name__ == "__main__":
   main()
   
