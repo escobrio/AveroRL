@@ -67,7 +67,7 @@ class MavEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
-        self.episode_length = np.random.uniform(low=6000, high=6000)
+        self.episode_length = np.random.uniform(low=1000, high=1000)
         self.k_f = np.random.normal(0.00005749, 0.000005749)                # std dev is +-10%
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
@@ -152,6 +152,7 @@ class MavEnv(gym.Env):
         omega_state = self.state[19:22]
         omega_setpoint = omega_state + omega_dot_cmd / 12.0         # Using nominal k_omega value of 12.0Hz
         omega_setpoint = np.clip(omega_setpoint, 0, 1)
+        omega_setpoint = np.array([0.4, 0.4, 0.4])
         # if self.step_counter < 300:
         #     omega_setpoint = np.clip(omega_setpoint, 0.4, 1)
         omega_dot = self.k_omega * (omega_setpoint - omega_state)
@@ -214,7 +215,11 @@ class MavEnv(gym.Env):
 
         # Update angular velocity and orientation
         ang_acc = torque / self.inertia # TODO np.cross(ang_vel, self.inertia @ angular_velocity)
+        ang_acc[0] = 0
+        ang_acc[1] = 0
         ang_vel += ang_acc * self.dt
+        ang_vel[0] = 0
+        ang_vel[1] = 0
         orientation *= R.from_rotvec(ang_vel * self.dt)
 
         # Calculate gravity vector in body frame
@@ -224,7 +229,9 @@ class MavEnv(gym.Env):
         
         # Update linear velocity and position
         lin_acc = force / self.mass + g_bodyframe - np.cross(ang_vel, lin_vel) # With Coriolis force
+        lin_acc = np.zeros(3)
         lin_vel += lin_acc * self.dt
+        lin_vel = np.array([0, 0, 0])
         position += orientation.apply(lin_vel) * self.dt
         
         # Update state
