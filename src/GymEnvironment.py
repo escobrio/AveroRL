@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import time
 from ForwardKinematics import thrustdirections, r_BE
 from Quaternion import quaternion_rotate_vector
-from Plots import plot_episode
+from Plots import BT_plot
 from torch.utils.tensorboard import SummaryWriter
 import copy
 import random
@@ -67,7 +67,7 @@ class MavEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
-        self.episode_length = np.random.uniform(low=500, high=1000)
+        self.episode_length = np.random.uniform(low=1000, high=1000)
         self.k_f = np.random.normal(0.00005749, 0.000005749)                # std dev is +-10%
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
@@ -89,7 +89,7 @@ class MavEnv(gym.Env):
         lin_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # Side note, this should be lin_acc = force / self.mass + g_bodyframe
         ang_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # and this ang_acc = torque / self.inertia
 
-        self.action_buffer = deque([np.zeros(9)])
+        self.action_buffer = deque([])
         print(f"action_buffer length: {len(self.action_buffer)}")
 
         # Randomize actuators
@@ -183,7 +183,14 @@ class MavEnv(gym.Env):
         # # Time_dependent randomizations
         # self.k_f -= 0.000000057
         # self.vel_ref[5] = np.sin(0.01 * self.step_counter)
-        # self.vel_ref[2] = np.sin(0.01 * self.step_counter)
+        if self.step_counter > 200 and self.step_counter < 400:
+            self.vel_ref[2] = 1
+        if self.step_counter > 400 and self.step_counter < 600:
+            self.vel_ref[2] = 0
+        if self.step_counter > 600 and self.step_counter < 800:
+            self.vel_ref[0] = 1
+        if self.step_counter > 800:
+            self.vel_ref[0] = 0
 
         # Extract current state
         position = self.state[0:3]
@@ -356,8 +363,9 @@ def evaluate_model(model, env):
         rewards.append(copy.deepcopy(reward))
 
     env.close()
-    fig1, fig2 = plot_episode(observations, infos, actions, rewards)
-    return fig1, fig2
+
+    fig1 = BT_plot(observations, infos, actions, rewards)
+    return fig1
 
 if __name__ == "__main__":
 
