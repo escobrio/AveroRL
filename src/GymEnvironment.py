@@ -131,7 +131,7 @@ class MavEnv(gym.Env):
         phi_dot_cmd = action[3:] * self.phi_dot_max 
         phi_state = self.state[22:28]
         phi_setpoint = phi_state + phi_dot_cmd / 10.586             # Using nominal k_phi value 10.586 Hz
-        phi_dot = self.k_phi * (phi_setpoint - phi_state)
+        phi_dot = self.k_phi * (phi_setpoint - phi_state) + np.random.uniform(-2, 2, 6)
         phi_state += phi_dot * self.dt
 
         # Update fan speed [PWM] according to first order model of error = setpoint - state
@@ -142,7 +142,7 @@ class MavEnv(gym.Env):
         # Comment out for evaluation!
         # if self.step_counter < 100:
         #     omega_setpoint = np.clip(omega_setpoint, 0.5, 1)
-        omega_dot = self.k_omega * (omega_setpoint - omega_state)
+        omega_dot = self.k_omega * (omega_setpoint - omega_state) + np.random.uniform(-2, 2, 3)
         omega_state += omega_dot * self.dt
         omega_state = np.clip(omega_state, 0, 1)
 
@@ -173,6 +173,23 @@ class MavEnv(gym.Env):
         
         return force, torque
     
+    # Function to generate a random rotation matrix
+    def random_rotation_matrix(self, rpy):
+        rx, ry, rz = rpy
+
+        # Rotation matrices for each axis
+        Rx = np.array([[1, 0, 0],
+                    [0, np.cos(rx), -np.sin(rx)],
+                    [0, np.sin(rx),  np.cos(rx)]])
+        Ry = np.array([[np.cos(ry), 0, np.sin(ry)],
+                    [0, 1, 0],
+                    [-np.sin(ry), 0, np.cos(ry)]])
+        Rz = np.array([[np.cos(rz), -np.sin(rz), 0],
+                    [np.sin(rz),  np.cos(rz), 0],
+                    [0, 0, 1]])
+        
+        return Rz @ Ry @ Rx
+
     def step(self, action):
         terminated = False
         truncated = False
@@ -205,19 +222,27 @@ class MavEnv(gym.Env):
         lin_vel = self.state[7:10]
         ang_vel = self.state[10:13]
 
-        rpy = orientation.as_euler('xyz', degrees=True)
-        if self.step_counter > 200:
-            self.last_ref = self.vel_ref[4]
-            self.vel_ref[3] = 0.03 * (0 - rpy[0])
-            self.vel_ref[4] = 0.03 * (20 - rpy[1])
-            self.vel_ref[5] = 0.03 * (0 - rpy[2])
+        # rpy = orientation.as_euler('xyz', degrees=True)
+        # if self.step_counter > 200:
+        #     self.last_ref = self.vel_ref[4]
+        #     self.vel_ref[3] = 0.03 * (0 - rpy[0])
+        #     self.vel_ref[4] = 0.03 * (20 - rpy[1])
+        #     self.vel_ref[5] = 0.03 * (0 - rpy[2])
 
         # Update actuators
         nozzle_angles, nozzle_setpoints, fanspeeds, fanspeeds_setpoints = self.first_order_actuator_models(action)
 
         # Compute thrust vectors from actuator states [bodyframe]
         thrust_vectors = self.compute_thrust_vectors(nozzle_angles, fanspeeds)
-        
+        # print(f"before: {thrust_vectors}")
+        rpy1 = np.array([0, 0.5, 0])  + np.random.uniform(low=-0.1, high=0.1, size=3)
+        rpy2 = np.array([0.25, -0.25, 0]) + np.random.uniform(low=-0.1, high=0.1, size=3)
+        rpy3 = np.array([-0.25, -0.25, 0]) + np.random.uniform(low=-0.1, high=0.1, size=3)
+        thrust_vectors[0] = self.random_rotation_matrix(rpy1) @ thrust_vectors[0]
+        thrust_vectors[1] = self.random_rotation_matrix(rpy2) @ thrust_vectors[1]
+        thrust_vectors[2] = self.random_rotation_matrix(rpy3) @ thrust_vectors[2]
+        # print(f"after: {thrust_vectors}")
+
         # Compute net force and torque [bodyframe]
         force, torque = self.compute_forces_and_torques(thrust_vectors, nozzle_angles)
 
