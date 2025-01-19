@@ -89,7 +89,7 @@ class MavEnv(gym.Env):
         lin_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # Side note, this should be lin_acc = force / self.mass + g_bodyframe
         ang_acc = np.random.uniform(low=-0.1, high=0.1, size=3)         # and this ang_acc = torque / self.inertia
 
-        self.action_buffer = deque([])
+        self.action_buffer = deque([np.zeros(9)])
         print(f"action_buffer length: {len(self.action_buffer)}")
 
         # Randomize actuators
@@ -131,7 +131,7 @@ class MavEnv(gym.Env):
         phi_dot_cmd = action[3:] * self.phi_dot_max 
         phi_state = self.state[22:28]
         phi_setpoint = phi_state + phi_dot_cmd / 10.586             # Using nominal k_phi value 10.586 Hz
-        phi_dot = self.k_phi * (phi_setpoint - phi_state) + np.random.uniform(-2, 2, 6)
+        phi_dot = self.k_phi * (phi_setpoint - phi_state)
         phi_state += phi_dot * self.dt
 
         # Update fan speed [PWM] according to first order model of error = setpoint - state
@@ -142,7 +142,7 @@ class MavEnv(gym.Env):
         # Comment out for evaluation!
         # if self.step_counter < 100:
         #     omega_setpoint = np.clip(omega_setpoint, 0.5, 1)
-        omega_dot = self.k_omega * (omega_setpoint - omega_state) + np.random.uniform(-2, 2, 3)
+        omega_dot = self.k_omega * (omega_setpoint - omega_state)
         omega_state += omega_dot * self.dt
         omega_state = np.clip(omega_state, 0, 1)
 
@@ -234,14 +234,12 @@ class MavEnv(gym.Env):
 
         # Compute thrust vectors from actuator states [bodyframe]
         thrust_vectors = self.compute_thrust_vectors(nozzle_angles, fanspeeds)
-        # print(f"before: {thrust_vectors}")
-        rpy1 = np.array([0, 0.5, 0])  + np.random.uniform(low=-0.1, high=0.1, size=3)
-        rpy2 = np.array([0.25, -0.25, 0]) + np.random.uniform(low=-0.1, high=0.1, size=3)
-        rpy3 = np.array([-0.25, -0.25, 0]) + np.random.uniform(low=-0.1, high=0.1, size=3)
-        thrust_vectors[0] = self.random_rotation_matrix(rpy1) @ thrust_vectors[0]
-        thrust_vectors[1] = self.random_rotation_matrix(rpy2) @ thrust_vectors[1]
-        thrust_vectors[2] = self.random_rotation_matrix(rpy3) @ thrust_vectors[2]
-        # print(f"after: {thrust_vectors}")
+        # rpy1 = np.array([0, 0.5, 0])  + np.random.uniform(low=-0.1, high=0.1, size=3)
+        # rpy2 = np.array([0.25, -0.25, 0]) + np.random.uniform(low=-0.1, high=0.1, size=3)
+        # rpy3 = np.array([-0.25, -0.25, 0]) + np.random.uniform(low=-0.1, high=0.1, size=3)
+        # thrust_vectors[0] = self.random_rotation_matrix(rpy1) @ thrust_vectors[0]
+        # thrust_vectors[1] = self.random_rotation_matrix(rpy2) @ thrust_vectors[1]
+        # thrust_vectors[2] = self.random_rotation_matrix(rpy3) @ thrust_vectors[2]
 
         # Compute net force and torque [bodyframe]
         force, torque = self.compute_forces_and_torques(thrust_vectors, nozzle_angles)
