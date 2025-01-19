@@ -67,7 +67,7 @@ class MavEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
-        self.episode_length = np.random.uniform(low=1200, high=1200)
+        self.episode_length = np.random.uniform(low=800, high=800)
         self.k_f = np.random.normal(0.00005749, 0.000005749)                # std dev is +-10%
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
@@ -183,24 +183,34 @@ class MavEnv(gym.Env):
         # # Time_dependent randomizations
         # self.k_f -= 0.000000057
         # self.vel_ref[5] = np.sin(0.01 * self.step_counter)
-        if self.step_counter < 200:
-            self.k_f = 2.0 * 0.00005749
-        if self.step_counter > 200 and self.step_counter < 400:
-            self.k_f = 1.5 * 0.00005749
-        if self.step_counter > 400 and self.step_counter < 600:
-            self.k_f = 1.0 * 0.00005749
-        if self.step_counter > 600 and self.step_counter < 800:
-            self.k_f = 0.75 * 0.00005749
-        if self.step_counter > 800 and self.step_counter < 1000:
-            self.k_f = 0.5 * 0.00005749
-        if self.step_counter > 1000:
-            self.k_f = 0.4 * 0.00005749
+
+
+
+        # if self.step_counter < 200:
+        #     self.vel_ref[5] = 0
+        # if self.step_counter > 200 and self.step_counter < 400:
+        #     self.vel_ref[5] = 1
+        # if self.step_counter > 400 and self.step_counter < 600:
+        #     self.vel_ref[5] = 0
+        # if self.step_counter > 600 and self.step_counter < 800:
+        #     self.vel_ref[4] = 1
+        # if self.step_counter > 800 and self.step_counter < 1000:
+        #     self.vel_ref[5] = 0
+        # if self.step_counter > 1000:
+        #     self.vel_ref[5] = 0
 
         # Extract current state
         position = self.state[0:3]
         orientation = R.from_quat(self.state[3:7])
         lin_vel = self.state[7:10]
         ang_vel = self.state[10:13]
+
+        rpy = orientation.as_euler('xyz', degrees=True)
+        if self.step_counter > 200:
+            self.last_ref = self.vel_ref[4]
+            self.vel_ref[3] = 0.03 * (0 - rpy[0])
+            self.vel_ref[4] = 0.03 * (20 - rpy[1])
+            self.vel_ref[5] = 0.03 * (0 - rpy[2])
 
         # Update actuators
         nozzle_angles, nozzle_setpoints, fanspeeds, fanspeeds_setpoints = self.first_order_actuator_models(action)
