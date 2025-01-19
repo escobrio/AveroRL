@@ -67,7 +67,7 @@ class MavEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.step_counter = 0
-        self.episode_length = np.random.uniform(low=1000, high=1000)
+        self.episode_length = np.random.uniform(low=1200, high=1200)
         self.k_f = np.random.normal(0.00005749, 0.000005749)                # std dev is +-10%
         self.k_phi = np.random.normal(10.586, self.k_phi_std)
         self.k_omega = np.random.normal(12, self.k_omega_std)
@@ -140,8 +140,8 @@ class MavEnv(gym.Env):
         omega_setpoint = omega_state + omega_dot_cmd / 12.0         # Using nominal k_omega value of 12.0Hz
         omega_setpoint = np.clip(omega_setpoint, 0, 1)
         # Comment out for evaluation!
-        if self.step_counter < 100:
-            omega_setpoint = np.clip(omega_setpoint, 0.5, 1)
+        # if self.step_counter < 100:
+        #     omega_setpoint = np.clip(omega_setpoint, 0.5, 1)
         omega_dot = self.k_omega * (omega_setpoint - omega_state)
         omega_state += omega_dot * self.dt
         omega_state = np.clip(omega_state, 0, 1)
@@ -183,14 +183,18 @@ class MavEnv(gym.Env):
         # # Time_dependent randomizations
         # self.k_f -= 0.000000057
         # self.vel_ref[5] = np.sin(0.01 * self.step_counter)
+        if self.step_counter < 200:
+            self.k_f = 2.0 * 0.00005749
         if self.step_counter > 200 and self.step_counter < 400:
-            self.vel_ref[2] = 1
+            self.k_f = 1.5 * 0.00005749
         if self.step_counter > 400 and self.step_counter < 600:
-            self.vel_ref[2] = 0
+            self.k_f = 1.0 * 0.00005749
         if self.step_counter > 600 and self.step_counter < 800:
-            self.vel_ref[0] = 1
-        if self.step_counter > 800:
-            self.vel_ref[0] = 0
+            self.k_f = 0.75 * 0.00005749
+        if self.step_counter > 800 and self.step_counter < 1000:
+            self.k_f = 0.5 * 0.00005749
+        if self.step_counter > 1000:
+            self.k_f = 0.4 * 0.00005749
 
         # Extract current state
         position = self.state[0:3]
