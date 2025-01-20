@@ -1,0 +1,178 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<root>
+ <tabbed_widget parent="main_window" name="Main Window">
+  <Tab tab_name="lin_vel_b" containers="1">
+   <Container>
+    <DockSplitter orientation="-" count="1" sizes="1">
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="0.073751" left="3.795426" bottom="-0.071757" right="13.795075"/>
+       <limitY/>
+       <curve color="#b41f46" name="/observations/data[0]"/>
+       <curve color="#4cd627" name="/observations/data[1]"/>
+       <curve color="#1a52c9" name="/observations/data[2]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab tab_name="ang_vel_b" containers="1">
+   <Container>
+    <DockSplitter orientation="-" count="1" sizes="1">
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="0.058257" left="3.795426" bottom="-0.059761" right="13.795075"/>
+       <limitY/>
+       <curve color="#ff0e4e" name="/observations/data[3]"/>
+       <curve color="#4cf15c" name="/observations/data[4]"/>
+       <curve color="#677ebd" name="/observations/data[5]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab tab_name="g_b" containers="1">
+   <Container>
+    <DockSplitter orientation="-" count="1" sizes="1">
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="0.328074" left="3.795426" bottom="-10.048558" right="13.795075"/>
+       <limitY/>
+       <curve color="#cf1729" name="/observations/data[6]"/>
+       <curve color="#2abd22" name="/observations/data[7]"/>
+       <curve color="#1f3cb4" name="/observations/data[8]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab tab_name="fanspeeds" containers="1">
+   <Container>
+    <DockSplitter orientation="-" count="2" sizes="0.50055;0.49945">
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="0.711163" left="3.795426" bottom="0.444831" right="13.795075"/>
+       <limitY/>
+       <curve color="#8c0008" name="/observations/data[9]"/>
+       <curve color="#00b20b" name="/observations/data[10]"/>
+       <curve color="#0700b5" name="/observations/data[11]"/>
+       <curve color="#ffbabf" name="/setpoints/data[0]"/>
+       <curve color="#b5ffb9" name="/setpoints/data[1]"/>
+       <curve color="#c8d2ff" name="/setpoints/data[2]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="0.227091" left="3.795426" bottom="-0.338156" right="13.795075"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/actions/data[0]"/>
+       <curve color="#d62728" name="/actions/data[1]"/>
+       <curve color="#1ac938" name="/actions/data[2]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab tab_name="nozzles" containers="1">
+   <Container>
+    <DockSplitter orientation="-" count="2" sizes="0.50055;0.49945">
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="1.185829" left="3.795426" bottom="-1.760207" right="13.795075"/>
+       <limitY/>
+       <curve color="#ff0006" name="/observations/data[12]"/>
+       <curve color="#2ccc00" name="/observations/data[13]"/>
+       <curve color="#000bff" name="/observations/data[14]"/>
+       <curve color="#e99500" name="/observations/data[15]"/>
+       <curve color="#00c35a" name="/observations/data[16]"/>
+       <curve color="#d900c0" name="/observations/data[17]"/>
+       <curve color="#ffbabc" name="/setpoints/data[3]"/>
+       <curve color="#c5ffb7" name="/setpoints/data[4]"/>
+       <curve color="#d2d5ff" name="/setpoints/data[5]"/>
+       <curve color="#ffeac3" name="/setpoints/data[6]"/>
+       <curve color="#85ffc4" name="/setpoints/data[7]"/>
+       <curve color="#ffcaf9" name="/setpoints/data[8]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="0.298523" left="3.795426" bottom="-0.260022" right="13.795075"/>
+       <limitY/>
+       <curve color="#ff110e" name="/actions/data[3]"/>
+       <curve color="#32db2e" name="/actions/data[4]"/>
+       <curve color="#2840dd" name="/actions/data[5]"/>
+       <curve color="#cf9317" name="/actions/data[6]"/>
+       <curve color="#22bd8b" name="/actions/data[7]"/>
+       <curve color="#ee00ff" name="/actions/data[8]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab tab_name="fanspeeds_pwm" containers="1">
+   <Container>
+    <DockSplitter orientation="-" count="1" sizes="1">
+     <DockArea name="...">
+      <plot style="Lines" mode="TimeSeries" flip_x="false" flip_y="false">
+       <range top="1690.046373" left="3.795426" bottom="1450.348331" right="13.795075"/>
+       <limitY/>
+       <curve color="#eb0002" name="/uavstate/motors[0]/position"/>
+       <curve color="#1ac938" name="/uavstate/motors[1]/position"/>
+       <curve color="#0e61ff" name="/uavstate/motors[2]/position"/>
+       <curve color="#ffc5c6" name="/uavstate/motors[0]/setpoint"/>
+       <curve color="#a2ffb2" name="/uavstate/motors[1]/setpoint"/>
+       <curve color="#cedfff" name="/uavstate/motors[2]/setpoint"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <currentTabIndex index="5"/>
+ </tabbed_widget>
+ <use_relative_time_offset enabled="1"/>
+ <!-- - - - - - - - - - - - - - - -->
+ <!-- - - - - - - - - - - - - - - -->
+ <Plugins>
+  <plugin ID="DataLoad CSV">
+   <parameters time_axis="" delimiter="0"/>
+  </plugin>
+  <plugin ID="DataLoad MCAP"/>
+  <plugin ID="DataLoad ROS bags">
+   <use_header_stamp value="false"/>
+   <discard_large_arrays value="true"/>
+   <max_array_size value="100"/>
+   <boolean_strings_to_number value="true"/>
+   <remove_suffix_from_strings value="true"/>
+   <selected_topics value="/diagnostics;/rosout;/rosout_agg;/tf;/tf_static;/Avero_Dove/imu/data_raw;/Avero_Dove/imu/mag;/Avero_Dove/imu/pressure;/Avero_Dove/imu/temp;/Avero_Dove/msf/core/parameter_descriptions;/Avero_Dove/msf/core/parameter_updates;/Avero_Dove/msf/pose_sensor/parameter_descriptions;/Avero_Dove/msf/pose_sensor/parameter_updates;/Avero_Dove/msf_core/correction;/Avero_Dove/msf_core/cov_aux;/Avero_Dove/msf_core/cov_core;/Avero_Dove/msf_core/cov_core_aux;/Avero_Dove/msf_core/ext_state;/Avero_Dove/msf_core/odometry;/Avero_Dove/msf_core/pose;/Avero_Dove/msf_core/pose_after_update;/Avero_Dove/msf_core/state_out;/Avero_Dove/vrpn_client/estimated_odometry;/Avero_Dove/vrpn_client/estimated_transform;/Avero_Dove/vrpn_client/raw_transform;/Avero_Dove/vrpn_client/vicon_intermediate_results;/F_int;/T_int;/b_v_mes;/b_w_mes;/command/actuator_overspeed;/command/determinant_A;/command/u;/command/u_dot;/command/u_real;/command/wrench_alloc;/command/wrench_cmd;/des_odom_compensated;/des_wrench;/desired_drone_odometry;/e_omega;/e_p;/e_p_xy_norm;/e_pi;/e_r;/e_ri;/e_v;/isArmed;/joy;/q_wb;/rc;/state_estimation;/uavstate;/visualization_marker;/w_desired_velocity;/w_velocity;/wrench_force;/wrench_force_xy_norm;/wrench_torque"/>
+  </plugin>
+  <plugin ID="DataLoad ULog"/>
+  <plugin ID="ROS Topic Subscriber">
+   <use_header_stamp value="false"/>
+   <discard_large_arrays value="true"/>
+   <max_array_size value="100"/>
+   <boolean_strings_to_number value="true"/>
+   <remove_suffix_from_strings value="true"/>
+   <selected_topics value="/actions;/observations;/setpoints;/uavstate"/>
+  </plugin>
+  <plugin ID="UDP Server"/>
+  <plugin ID="WebSocket Server"/>
+  <plugin ID="ZMQ Subscriber"/>
+  <plugin ID="Fast Fourier Transform"/>
+  <plugin ID="Quaternion to RPY"/>
+  <plugin ID="Reactive Script Editor">
+   <library code="--[[ Helper function to create a series from arrays&#xa;&#xa; new_series: a series previously created with ScatterXY.new(name)&#xa; prefix:     prefix of the timeseries, before the index of the array&#xa; suffix_X:   suffix to complete the name of the series containing the X value. If [nil], use the index of the array.&#xa; suffix_Y:   suffix to complete the name of the series containing the Y value&#xa; timestamp:   usually the tracker_time variable&#xa;              &#xa; Example:&#xa; &#xa; Assuming we have multiple series in the form:&#xa; &#xa;   /trajectory/node.{X}/position/x&#xa;   /trajectory/node.{X}/position/y&#xa;   &#xa; where {N} is the index of the array (integer). We can create a reactive series from the array with:&#xa; &#xa;   new_series = ScatterXY.new(&quot;my_trajectory&quot;) &#xa;   CreateSeriesFromArray( new_series, &quot;/trajectory/node&quot;, &quot;position/x&quot;, &quot;position/y&quot;, tracker_time );&#xa;--]]&#xa;&#xa;function CreateSeriesFromArray( new_series, prefix, suffix_X, suffix_Y, timestamp )&#xa;  &#xa;  --- clear previous values&#xa;  new_series:clear()&#xa;  &#xa;  --- Append points to new_series&#xa;  index = 0&#xa;  while(true) do&#xa;&#xa;    x = index;&#xa;    -- if not nil, get the X coordinate from a series&#xa;    if suffix_X ~= nil then &#xa;      series_x = TimeseriesView.find( string.format( &quot;%s.%d/%s&quot;, prefix, index, suffix_X) )&#xa;      if series_x == nil then break end&#xa;      x = series_x:atTime(timestamp)&#x9; &#xa;    end&#xa;    &#xa;    series_y = TimeseriesView.find( string.format( &quot;%s.%d/%s&quot;, prefix, index, suffix_Y) )&#xa;    if series_y == nil then break end &#xa;    y = series_y:atTime(timestamp)&#xa;    &#xa;    new_series:push_back(x,y)&#xa;    index = index+1&#xa;  end&#xa;end&#xa;&#xa;--[[ Similar to the built-in function GetSeriesNames(), but select only the names with a give prefix. --]]&#xa;&#xa;function GetSeriesNamesByPrefix(prefix)&#xa;  -- GetSeriesNames(9 is a built-in function&#xa;  all_names = GetSeriesNames()&#xa;  filtered_names = {}&#xa;  for i, name in ipairs(all_names)  do&#xa;    -- check the prefix&#xa;    if name:find(prefix, 1, #prefix) then&#xa;      table.insert(filtered_names, name);&#xa;    end&#xa;  end&#xa;  return filtered_names&#xa;end&#xa;&#xa;--[[ Modify an existing series, applying offsets to all their X and Y values&#xa;&#xa; series: an existing timeseries, obtained with TimeseriesView.find(name)&#xa; delta_x: offset to apply to each x value&#xa; delta_y: offset to apply to each y value &#xa;  &#xa;--]]&#xa;&#xa;function ApplyOffsetInPlace(series, delta_x, delta_y)&#xa;  -- use C++ indeces, not Lua indeces&#xa;  for index=0, series:size()-1 do&#xa;    x,y = series:at(index)&#xa;    series:set(index, x + delta_x, y + delta_y)&#xa;  end&#xa;end&#xa;"/>
+   <scripts/>
+  </plugin>
+  <plugin ID="CSV Exporter"/>
+  <plugin ID="ROS /rosout Visualization"/>
+  <plugin ID="ROS Topic Re-Publisher"/>
+ </Plugins>
+ <!-- - - - - - - - - - - - - - - -->
+ <previouslyLoaded_Datafiles/>
+ <previouslyLoaded_Streamer name="ROS Topic Subscriber"/>
+ <!-- - - - - - - - - - - - - - - -->
+ <customMathEquations/>
+ <snippets/>
+ <!-- - - - - - - - - - - - - - - -->
+</root>
+
