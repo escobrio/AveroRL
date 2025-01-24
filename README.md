@@ -15,7 +15,7 @@ During the 1-year focus project AVERO in 2024 at the Autonomous Systems Lab at E
 
 
 ## Coordinate System Convention:
-![CoordinateSystemAvero](https://github.com/user-attachments/assets/70200639-49b3-4ec6-b187-a7daf5bcbf9d)
+![CoordinateSystemConvention](https://github.com/user-attachments/assets/c125300d-ee70-4be4-b17e-dd7f496bb7b0)
 
 ## Weight and Inertia Tensor:
 <img width="1230" alt="Inertia_MAV" src="https://github.com/user-attachments/assets/818b0ce2-0ae0-4d56-b450-d4c81a013875">
